@@ -731,6 +731,7 @@ const COPS={
  patrol:{name:'Patrol',color:0x101319,shape:'cop',top:60,acc:25,yaw:1.9,grip:7.4,mass:1500,hp:75,len:4.7,wid:1.95},
  interceptor:{name:'Interceptor',color:0x0d1016,shape:'cop',top:70,acc:29,yaw:2.05,grip:8.0,mass:1400,hp:65,len:4.6,wid:1.95},
  suv:{name:'Enforcer',color:0x0e1116,shape:'copsuv',top:56,acc:23,yaw:1.55,grip:6.8,mass:2300,hp:150,len:5.1,wid:2.15}};
+const TANKDEF={name:'Tank',color:0x55603a,shape:'tank',top:15,acc:9,yaw:0.7,grip:9.5,mass:5200,hp:320,len:6.6,wid:3.1};
 
 /* side profiles: [fraction of length, height]; extruded across the width for a properly shaped body */
 const PROF={
@@ -823,10 +824,32 @@ function buildCarMesh(def,isPlayer){
   return{group:g,inner,wheels,flames,cop:copParts,under:ugMat};
 }
 
+function buildTankMesh(def){
+  const g=new THREE.Group(),inner=new THREE.Group();g.add(inner);
+  const L=def.len,W=def.wid;
+  const hullMat=paint(def.color,false);
+  const trackMat=new THREE.MeshStandardMaterial({color:0x1c1e22,roughness:0.85,metalness:0.15});
+  const barrelMat=new THREE.MeshStandardMaterial({color:0x2a2c30,roughness:0.5,metalness:0.6});
+  const put=(parent,geo,mat,x,y,z)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);parent.add(m);return m;};
+  for(const s of[-1,1])put(inner,new THREE.BoxGeometry(0.62,0.62,L*0.92),trackMat,s*(W/2-0.31),0.31,0);
+  put(inner,new THREE.BoxGeometry(W-0.5,0.62,L*0.86),hullMat,0,0.7,0);
+  put(inner,new THREE.BoxGeometry(W-1.0,0.3,L*0.66),hullMat,0,1.05,-L*0.05);
+  const turretPivot=new THREE.Group();turretPivot.position.set(0,1.22,0.15);inner.add(turretPivot);
+  put(turretPivot,new THREE.BoxGeometry(1.7,0.55,2.0),hullMat,0,0.3,0);
+  const barrel=put(turretPivot,new THREE.CylinderGeometry(0.09,0.1,3.2,10),barrelMat,0,0.32,2.5);
+  barrel.rotation.x=PI/2;
+  const muzzle=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xffcf7a,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,opacity:0}));
+  muzzle.scale.set(2.4,2.4,1);muzzle.position.set(0,0.32,4.05);turretPivot.add(muzzle);
+  inner.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
+  const sh=new THREE.Mesh(new THREE.PlaneGeometry(W*1.6,L*1.3),new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false,opacity:0.6}));
+  sh.rotation.x=-PI/2;sh.position.y=0.06;g.add(sh);
+  return{group:g,inner,wheels:[],flames:[],cop:null,under:null,turretPivot,muzzle};
+}
+
 let carId=0;
 const cars=[];
 function makeCar(def,isPlayer){
-  const m=def.traffic?null:buildCarMesh(def,isPlayer);if(m)scene.add(m.group);const hl=def.len/2,hp=def.hp*(isPlayer?TUNE.hpMul:1);
+  const m=def.traffic?null:(def.shape==='tank'?buildTankMesh(def):buildCarMesh(def,isPlayer));if(m)scene.add(m.group);const hl=def.len/2,hp=def.hp*(isPlayer?TUNE.hpMul:1);
   return{id:carId++,def,isPlayer,mesh:m,x:0,z:0,th:0,vx:0,vz:0,spin:0,steer:0,speed:0,vfwd:0,vlat:0,accel:0,
     health:hp,maxHealth:hp,nitro:1,nitroOn:false,flat:0,dead:false,deadT:0,kind:isPlayer?'player':'cop',ctl:0,
     in:{thr:0,brk:0,str:0,hb:0,nit:0},offs:[hl*0.55,0,-hl*0.55],rad:def.wid*0.5+0.06,wheelRot:0,
@@ -835,7 +858,7 @@ function makeCar(def,isPlayer){
 function removeCar(c){if(c.mesh)scene.remove(c.mesh.group);const i=cars.indexOf(c);if(i>=0)cars.splice(i,1);}
 
 /* ================= GAME STATE ================= */
-const G={mode:'menu',engaged:false,spotT:0,farT:0,lostT:0,lastDir:{x:0,z:1},paused:false,clock:0,time:0,elapsed:0,heat:1,bounty:0,cool:0,coolNeed:30,spotted:true,
+const G={mode:'menu',engaged:false,spotT:0,farT:0,lostT:0,lastDir:{x:0,z:1},tanksActive:false,tankCd:0,paused:false,clock:0,time:0,elapsed:0,heat:1,bounty:0,cool:0,coolNeed:30,spotted:true,
   lastSeen:{x:0,z:0},bust:0,wrecked:0,topSpeed:0,spawnCd:0,stripCd:10,rbCd:24,shake:0,endT:0,endShown:false,result:null,
   near:999,units:0,strips:[],rblocks:[],heli:null,bank:0,sel:0,dmgFlash:0};
 try{G.bank=parseInt(localStorage.getItem('redline-bank')||'0',10)||0;}catch(e){}
@@ -912,7 +935,12 @@ function damage(c,amt){
 function wreckCop(c){
   c.dead=true;c.deadT=0;c.in.thr=c.in.brk=c.in.str=0;
   if(c.kind==='traffic')return;
-  if(G.mode==='playing'){const parked=c.kind==='parked';G.wrecked++;G.bounty+=parked?100:250;toast(parked?'Roadblock unit down  +100':'Unit wrecked  +250','good');sfxBeep(520,0.12);}
+  if(G.mode==='playing'){
+    const parked=c.kind==='parked',tank=c.kind==='tank';
+    G.wrecked++;G.bounty+=tank?900:(parked?100:250);
+    toast(tank?'Tank destroyed  +900':(parked?'Roadblock unit down  +100':'Unit wrecked  +250'),'good');
+    sfxBeep(tank?240:520,tank?0.22:0.12);
+  }
 }
 function wallHit(c,imp,px,pz){
   if(imp>2.5)sparks(px,0.6,pz,Math.min(14,(imp*0.7)|0),imp);
@@ -1294,6 +1322,13 @@ function aiUpdate(c,dt){
   A.sees=A.los||dist<200;A.dist=dist;
   c.speedMul=clamp(0.95+(dist-50)/160,0.95,1.4)*(1+0.012*G.heat);c.accMul=c.speedMul;
   if(A.man){A.man.t-=dt;I.str=A.man.str;if(A.man.dir>0)I.thr=sp<8?0.5:0;else I.brk=1;if(A.man.t<=0){A.man=null;A.stuck=0;}return;}
+  if(c.kind==='tank'){
+    const want=Math.atan2(dx,dz);
+    A.turret+=wrap(want-A.turret)*Math.min(1,dt*2.2);
+    if(A.muzzleT>0){A.muzzleT-=dt;if(c.mesh&&c.mesh.muzzle)c.mesh.muzzle.material.opacity=Math.max(0,A.muzzleT/0.12);}
+    A.fireCd-=dt;
+    if(dist<170&&A.fireCd<=0&&!segBlocked(c.x,c.z,P.x,P.z)){fireShell(c,A.turret);A.fireCd=rand(3.5,5);A.muzzleT=0.12;}
+  }
   if(A.los&&dist<340){
     const pfx=Math.sin(P.th),pfz=Math.cos(P.th),plx=Math.cos(P.th),plz=-Math.sin(P.th);
     const lead=clamp(dist/Math.max(25,sp+P.speed),0,1)*(A.role==='cutoff'?1.7:0.8);
@@ -1362,6 +1397,49 @@ function spawnCop(kind,initial,ahead){
   c.vx=Math.sin(c.th)*14;c.vz=Math.cos(c.th)*14;
   c.ai={los:false,losT:0,sees:false,node:null,prev:null,next:null,role:kind==='suv'?'ram':((kind==='interceptor'&&Math.random()<0.6)?'cutoff':(Math.random()<0.5?'ram':'flank')),side:Math.random()<0.5?-1:1,stuck:0,man:null,manT:-99,manDir:1,dist:100,search:null,searchT:0,path:null,pi:0,pathT:0};
   cars.push(c);return c;
+}
+function spawnTank(){
+  const P=player;
+  const sp0=Math.hypot(P.vx,P.vz),fx=sp0>4?P.vx/sp0:Math.sin(P.th),fz=sp0>4?P.vz/sp0:Math.cos(P.th);
+  const sp=findSpawn(150,300,true,{x:P.x+fx*220,z:P.z+fz*220,r:170})||findSpawn(120,320,false)||findSpawn(90,340,false);
+  if(!sp)return null;
+  const c=makeCar(TANKDEF,false);c.kind='tank';c.armor=1;c.x=sp.x;c.z=sp.z;
+  const dx=P.x-sp.x,dz=P.z-sp.z;c.th=Math.abs(dx)>Math.abs(dz)?(dx>0?PI/2:-PI/2):(dz>0?0:PI);
+  c.vx=Math.sin(c.th)*6;c.vz=Math.cos(c.th)*6;
+  c.ai={los:false,losT:0,sees:false,node:null,prev:null,next:null,role:'ram',side:1,stuck:0,man:null,manT:-99,manDir:1,dist:100,search:null,searchT:0,path:null,pi:0,pathT:0,turret:c.th,fireCd:rand(1.5,3),muzzleT:0};
+  cars.push(c);return c;
+}
+const SHELLS=[];
+function fireShell(tank,angle){
+  const bx=tank.x+Math.sin(angle)*4.6,bz=tank.z+Math.cos(angle)*4.6,by=1.85;
+  const P=player,lead=0.9,tx=P.x+P.vx*lead,tz=P.z+P.vz*lead;
+  const dur=1.15,vx=(tx-bx)/dur,vz=(tz-bz)/dur;
+  const mesh=new THREE.Mesh(new THREE.SphereGeometry(0.22,8,6),new THREE.MeshBasicMaterial({color:0xffb020}));
+  mesh.position.set(bx,by,bz);scene.add(mesh);
+  const trail=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,1,6),new THREE.MeshBasicMaterial({color:0xffe6a0,transparent:true,opacity:0.7}));
+  trail.rotation.x=PI/2;mesh.add(trail);
+  SHELLS.push({x:bx,y:by,z:bz,vx,vz,life:dur+0.3,mesh});
+  sfxBeep(180,0.09);
+}
+function explodeShell(x,z){
+  const R=13,MAXD=55;
+  for(const c of cars){if(c.kind==='tank'||c.dead)continue;const d=Math.hypot(c.x-x,c.z-z);if(d<R)damage(c,MAXD*(1-d/R));}
+  sparks(x,1.2,z,18,26);smoke(x,1.0,z,0,0,1.6,0.28);smoke(x,1.0,z,0,0,1.9,0.15);
+  const dPlayer=Math.hypot(player.x-x,player.z-z);
+  if(dPlayer<R+6){G.shake=Math.max(G.shake,1.1);sfxHit(30);}else sfxHit(14);
+}
+function updateShells(dt){
+  for(let i=SHELLS.length-1;i>=0;i--){
+    const s=SHELLS[i],nx=s.x+s.vx*dt,nz=s.z+s.vz*dt;
+    s.life-=dt;
+    const hitPlayer=Math.hypot(nx-player.x,nz-player.z)<3.2;
+    const blocked=segBlocked(s.x,s.z,nx,nz);
+    if(hitPlayer||blocked||s.life<=0){
+      explodeShell(blocked?s.x:nx,blocked?s.z:nz);
+      scene.remove(s.mesh);SHELLS.splice(i,1);continue;
+    }
+    s.x=nx;s.z=nz;s.mesh.position.set(s.x,s.y,s.z);
+  }
 }
 
 /* ================= ROAD HAZARDS ================= */
@@ -1600,6 +1678,7 @@ function toGarage(){
 }
 function clearHazards(){
   G.strips.forEach(s=>scene.remove(s.mesh));G.strips.length=0;G.rblocks.length=0;removeHeli();
+  SHELLS.forEach(s=>scene.remove(s.mesh));SHELLS.length=0;
 }
 const HEAT_AT=[0,1600,4200,8500,15000];
 const HEAT_MSG=['','','Helicopter, spike strips, roadblocks','Interceptors cutting you off','Enforcers on the way','All units. Total lockdown'];
@@ -1613,7 +1692,7 @@ function startPursuit(){
   for(let i=cars.length-1;i>=1;i--)removeCar(cars[i]);
   clearHazards();
   const P=player;P.health=P.maxHealth;P.nitro=1;P.dead=false;P.flat=0;placePlayer();
-  Object.assign(G,{engaged:false,spotT:0,farT:0,lostT:0,time:0,elapsed:0,heat:1,bounty:0,cool:0,coolNeed:30,spotted:true,bust:0,wrecked:0,topSpeed:0,spawnCd:1.2,stripCd:9,rbCd:18,shake:0,endT:0,endShown:false,result:null,paused:false,near:999,units:0,dmgFlash:0});
+  Object.assign(G,{engaged:false,spotT:0,farT:0,lostT:0,time:0,elapsed:0,heat:1,bounty:0,cool:0,coolNeed:30,spotted:true,bust:0,wrecked:0,topSpeed:0,spawnCd:1.2,stripCd:9,rbCd:18,shake:0,endT:0,endShown:false,result:null,paused:false,near:999,units:0,dmgFlash:0,tanksActive:false,tankCd:0});
   G.lastSeen.x=P.x;G.lastSeen.z=P.z;
   setMode('playing');
   for(let i=0;i<3;i++)spawnCop(pickKind(),true);
@@ -1697,6 +1776,14 @@ function gameLogic(dt){
   // helicopter
   if(G.heat>=2&&!G.heli)spawnHeli();
   updateHeli(dt);
+  // tanks: a late-game escalation once the bounty crosses a high threshold
+  if(G.bounty>=17000){
+    if(!G.tanksActive){G.tanksActive=true;toast('Armor inbound. Tanks are coming for you.','red');}
+    G.tankCd-=dt;
+    const tankN=cars.filter(cc=>cc.kind==='tank'&&!cc.dead).length;
+    if(spotted&&G.tankCd<=0&&tankN<3){spawnTank();G.tankCd=rand(9,14);}
+  }
+  updateShells(dt);
 }
 function effects(dt){
   for(const c of cars){
@@ -1753,6 +1840,7 @@ function syncMeshes(dt){
       m.cop.sr.material.opacity=on===0?0.95:0.0;m.cop.sb.material.opacity=on===1?0.95:0.0;
       m.under.color.setHex(on===1?0x2f7bff:0xff2040);m.under.opacity=c.dead?0:0.32;
     }
+    if(c.kind==='tank'&&m.turretPivot)m.turretPivot.rotation.y=wrap(c.ai.turret-c.th);
   }
   for(const t of TRI){
     t.cab.count=t.tires.count=t.lights.count=t.n;t.cab.instanceMatrix.needsUpdate=t.tires.instanceMatrix.needsUpdate=t.lights.instanceMatrix.needsUpdate=true;
@@ -1854,6 +1942,7 @@ function drawMini(){
     if(cr===P)continue;
     if(cr.kind==='traffic'){if(!cr.dead)dot(cr.x,cr.z,'#7b8296',2.5);continue;}
     if(cr.kind==='parked')dot(cr.x,cr.z,cr.dead?'#555':'#ffa030',4,true);
+    else if(cr.kind==='tank')dot(cr.x,cr.z,cr.dead?'#555':'#3d5a2a',7,true);
     else dot(cr.x,cr.z,cr.dead?'#555':(Math.floor(G.clock*4+cr.id)%2?'#3d8bff':'#ff3358'),5);
   }
   if(G.heli)dot(G.heli.x,G.heli.z,'#ffffff',6,true);
@@ -1895,7 +1984,7 @@ player.x=0;player.z=-12;player.th=0.5;
 updateMenuUI();applyQuality();
 if(typeof headlight!=='undefined')headlight.intensity=THEME[MODE].headI;
 {const b=document.getElementById('btnTheme');if(b)b.textContent=MODE==='night'?'Day':'Night';}
-window.__redline={PEDS,PN,spawnPeds,sigState,SIGS,AU,spawnRoadblock,spawnTraffic,placeTraffic,findPath,occ,occW,GN,cellIdx,cellC,solids,G,cars,update,frame,startPursuit,endRun,get player(){return player;},blocks,segBlocked,rc,N,HALF,setCar,toGarage,Merger};
+window.__redline={spawnTank,SHELLS,fireShell,PEDS,PN,spawnPeds,sigState,SIGS,AU,spawnRoadblock,spawnTraffic,placeTraffic,findPath,occ,occW,GN,cellIdx,cellC,solids,G,cars,update,frame,startPursuit,endRun,get player(){return player;},blocks,segBlocked,rc,N,HALF,setCar,toGarage,Merger};
 requestAnimationFrame(frame);
 })();
 </script>
