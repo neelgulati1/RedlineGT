@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Redline Pursuit (crowds v1)</title>
+<title>RedlineGT V0.2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,500;0,600;0,700;1,600;1,700&display=swap" rel="stylesheet">
@@ -164,7 +164,7 @@ body.endcard #end{display:flex}
 
 <div id="menu" class="screen">
   <div class="mcard">
-    <h1 class="logo">Redline<br>Pursuit</h1>
+    <h1 class="logo">RedlineGT</h1>
     <p class="lede">One car, one city, every unit on the radio. Break line of sight, keep moving, and stay out of sight until your cooldown fills.</p>
     <div class="picker">
       <button id="prev" aria-label="Previous car">&lsaquo;</button>
@@ -443,18 +443,21 @@ const MTN=[];
 function hillH(x,z){   // terrain height from the mountain cones (0 inside the city)
   if(Math.abs(x)<HALF-5&&Math.abs(z)<HALF-5)return 0;
   let m=0;
-  for(let i=0;i<MTN.length;i++){const q=MTN[i],dx=x-q[0],dz=z-q[1],d2=dx*dx+dz*dz;if(d2>=q[3]*q[3])continue;const h=q[2]*(1-Math.sqrt(d2)/q[3]);if(h>m)m=h;}
+  for(let i=0;i<MTN.length;i++){const q=MTN[i],dx=x-q[0],dz=z-q[1],d2=dx*dx+dz*dz;if(d2>=q[3]*q[3])continue;const h=q[2]-q[5]*(Math.sqrt(d2+q[4]*q[4])-q[4]);if(h>m)m=h;}
   return m;
 }
 (function mountains(){
-  const mat=new THREE.MeshStandardMaterial({color:0x5d7a62,flatShading:true,roughness:1,metalness:0,envMapIntensity:0.3}),snow=new THREE.MeshStandardMaterial({color:0xeaf0f6,flatShading:true,roughness:1,metalness:0,envMapIntensity:0.3});
+  const mat=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,flatShading:true,side:THREE.DoubleSide,roughness:1,metalness:0,envMapIntensity:0.3}),snow=new THREE.MeshStandardMaterial({color:0xeaf0f6,flatShading:true,roughness:1,metalness:0,envMapIntensity:0.3});
   const SEG=48,fit=1;
   for(let i=0;i<64;i++){const a=i/64*TAU+(srand()-0.5)*0.1,c=Math.cos(a),sn=Math.sin(a),S=HALF+250+srand()*200,k=S/Math.max(Math.abs(c),Math.abs(sn));
     const w=110+srand()*110,h=w*(0.35+srand()*0.2),x=c*k,z=sn*k;
     if(c>0.3||x+w>COAST-40)continue;   // keep the whole coast side clear of mountains
-    const m=new THREE.Mesh(new THREE.ConeGeometry(w,h,SEG,1),mat);
-    m.position.set(x,h/2,z);m.receiveShadow=true;scene.add(m);MTN.push([x,z,h,w*fit]);
-    if(h>85){const t=new THREE.Mesh(new THREE.ConeGeometry(w*0.303,h*0.3,SEG),snow);t.position.set(x,h*0.85,z);scene.add(t);}}
+    const e=w*0.06,sl=h/(Math.sqrt(w*w+e*e)-e),pts=[];
+    for(let j=0;j<=40;j++){const r=w*Math.pow(j/40,1.6);pts.push(new THREE.Vector2(r,Math.max(0,h-sl*(Math.sqrt(r*r+e*e)-e))));}
+    const g=new THREE.LatheGeometry(pts,SEG),pa=g.attributes.position,cols=new Float32Array(pa.count*3),c1=new THREE.Color(0x4f6f52),c2=new THREE.Color(0x8a8f86),c3=new THREE.Color(0xeef2f6),cc=new THREE.Color();
+    for(let j=0;j<pa.count;j++){const f=pa.getY(j)/h;if(f>0.72)cc.copy(c3);else if(f>0.4)cc.copy(c1).lerp(c2,(f-0.4)/0.32);else cc.copy(c1);cols[j*3]=cc.r;cols[j*3+1]=cc.g;cols[j*3+2]=cc.b;}
+    g.setAttribute('color',new THREE.BufferAttribute(cols,3));
+    const m=new THREE.Mesh(g,mat);m.position.set(x,0,z);m.receiveShadow=true;scene.add(m);MTN.push([x,z,h,w,e,sl]);}
 })();
 const WATER={u:{value:0},rip:null,foam:null};
 WATER.rip=canvasTex(128,128,(x,w,h)=>{const im=x.createImageData(w,h);
@@ -1465,13 +1468,17 @@ function vertUpdate(c,dt){
   const sh=hillH(c.x,c.z);
   if(c.sp0===undefined){c.sp0=sh;c.vyG=0;c.air=false;}
   if(!c.air){
-    const gv=(sh-c.sp0)/dt;c.vyG=c.vyG*0.5+gv*0.5;
-    if(c.vyG>2.5&&c.speed>8&&c.sp0+c.vyG*dt-0.5*GRAV*dt*dt>sh+0.04){c.air=true;c.vy=c.vyG;c.yAir=c.sp0;c.airT=0;}
+    const gv=(sh-c.sp0)/dt;
+    c.coolT=(c.coolT||0)-dt;
+    let ok=c.coolT<=0&&c.speed>6&&c.sp0+c.vyG*dt-0.5*GRAV*dt*dt>sh+0.003;   // the ground fell away faster than gravity pulls
+    if(ok)for(const t of[0.1,0.2]){if(c.sp0+c.vyG*t-0.5*GRAV*t*t<hillH(c.x+c.vx*t,c.z+c.vz*t)+0.02){ok=false;break;}}   // ...and the path ahead really is clear of the ground
+    if(ok){c.air=true;c.vy=c.vyG;c.yAir=c.sp0;c.airT=0;}
+    else c.vyG=gv;
   }else{
     c.airT+=dt;c.vy-=GRAV*dt;c.yAir+=c.vy*dt;
     if(c.yAir<=sh){
-      const imp=Math.max(0,-(c.vy-(sh-c.sp0)/dt));c.air=false;   // impact relative to the slope you land on
-      c.yAir=sh;c.vyG=0;
+      const gvL=(sh-c.sp0)/dt,imp=Math.max(0,-(c.vy-gvL));c.air=false;c.coolT=0.3;   // impact relative to the slope you land on
+      c.yAir=sh;c.vyG=gvL;
       c.vx*=0.95;c.vz*=0.95;c.bv=Math.max(c.bv,clamp(imp*0.12,0,3));
       if(imp>9){sparks(c.x,0.4,c.z,Math.min(16,imp|0),imp);if(c.isPlayer){G.shake=Math.max(G.shake,Math.min(1.1,imp*0.05));sfxHit(imp);}}
       if(imp>17)damage(c,(imp-17)*TUNE.wallDmg);
@@ -2034,7 +2041,16 @@ function syncMeshes(dt){
     const m=c.mesh;
     const gfx=Math.sin(c.th),gfz=Math.cos(c.th),gh2=c.def.len*0.33,hf=groundH(c.x+gfx*gh2,c.z+gfz*gh2)+hillH(c.x+gfx*gh2,c.z+gfz*gh2),hr=groundH(c.x-gfx*gh2,c.z-gfz*gh2)+hillH(c.x-gfx*gh2,c.z-gfz*gh2);
     if(c.air){c.gy=c.yAir;c.gp+=(clamp(Math.atan2(c.vy,Math.max(c.speed,4)),-0.7,0.9)-c.gp)*Math.min(1,dt*5);}
-    else{c.gy+=(Math.max((hf+hr)/2,groundH(c.x,c.z)+hillH(c.x,c.z))-c.gy)*Math.min(1,dt*30);c.gp+=(Math.atan2(hf-hr,gh2*2)-c.gp)*Math.min(1,dt*10);}
+    else{
+      const lx2=Math.cos(c.th),lz2=-Math.sin(c.th),hw=c.def.wid*0.5,hc=groundH(c.x,c.z)+hillH(c.x,c.z),
+        hL=groundH(c.x+lx2*hw,c.z+lz2*hw)+hillH(c.x+lx2*hw,c.z+lz2*hw),hR=groundH(c.x-lx2*hw,c.z-lz2*hw)+hillH(c.x-lx2*hw,c.z-lz2*hw);
+      const ty=Math.max((hf+hr)/2,(hL+hR)/2,hc);
+      c.gy=ty>c.gy?ty:c.gy+(ty-c.gy)*Math.min(1,dt*20);   // never sink into a slope: snap up, ease down
+      const tp=Math.atan2(hf-hr,gh2*2),vp=c.speed>12?clamp(Math.atan2(c.vyG||0,c.speed),-0.3,0.9):0;
+      c.gp+=(Math.max(tp,vp)-c.gp)*Math.min(1,dt*10);   // keep the nose up over a crest instead of tipping forward
+      c.gr=(c.gr||0)+(Math.atan2(hL-hR,hw*2)-(c.gr||0))*Math.min(1,dt*10);   // lean with sideways slopes
+    }
+    if(c.air)c.gr=(c.gr||0)*(1-Math.min(1,dt*3));
     const tr=clamp(c.steer*clamp(c.speed/35,0,1)*0.05,-0.06,0.06);c.roll+=(tr-c.roll)*Math.min(1,dt*6);
     const tp=clamp(-c.accel*0.0022,-0.05,0.05);c.pitch+=(tp-c.pitch)*Math.min(1,dt*5);
     if(c.kind==='traffic'){
@@ -2051,7 +2067,7 @@ function syncMeshes(dt){
     if(m.shadow){const dd=Math.max(0,m.group.position.y-(groundH(c.x,c.z)+hillH(c.x,c.z)));m.shadow.position.y=0.06-dd;m.ug.position.y=0.085-dd;m.shadow.material.opacity=0.45*clamp(1-dd/25,0.15,1);}
     c.wheelRot+=c.vfwd*dt/0.36;
     for(const w of m.wheels){w.spin.rotation.x=c.wheelRot;if(w.front)w.pivot.rotation.y=c.steer*0.42;}
-    m.inner.rotation.z=c.roll;m.inner.rotation.x=c.pitch-c.gp;
+    m.inner.rotation.z=c.roll+(c.gr||0);m.inner.rotation.x=c.pitch-c.gp;
     for(const f of m.flames){f.visible=c.nitroOn;if(c.nitroOn)f.scale.set(1,0.7+Math.random()*0.9,1);}
     if(m.cop){
       const on=c.dead?-1:Math.floor(G.clock*7+c.id)%2;
