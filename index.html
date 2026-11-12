@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>RedlineGT V0.4.0</title>
+<title>RedlineGT V0.4.2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,500;0,600;0,700;1,600;1,700&display=swap" rel="stylesheet">
@@ -305,7 +305,7 @@ function circleBox(cx,cz,r,b){
 let renderer;
 try{renderer=new THREE.WebGLRenderer({canvas:$('c'),antialias:true,powerPreference:'high-performance'});}
 catch(err){document.body.innerHTML='<p style="padding:24px;font-family:sans-serif;color:#eee">This game needs WebGL, which your browser could not start. Try a recent Chrome, Safari, Firefox or Edge with hardware acceleration on.</p>';return;}
-try{renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;}catch(e){}
+try{renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;}catch(e){}
 const Q={ema:0,level:(window.matchMedia&&window.matchMedia('(pointer:coarse)').matches)?'low':'high',lowT:0};
 let MODE='day';try{MODE=localStorage.getItem('redline-theme')||'day';}catch(e){}
 function saveTheme(){try{localStorage.setItem('redline-theme',MODE);}catch(e){}}
@@ -322,7 +322,7 @@ const camera=new THREE.PerspectiveCamera(64,1,0.6,2600);
 const hemi=new THREE.HemisphereLight(0xbfe3ff,0xd8c9a0,0.72);scene.add(hemi);
 const moon=new THREE.DirectionalLight(0xfff6e0,0.82);moon.position.set(-40,70,-30);scene.add(moon);
 const moonTarget=new THREE.Object3D();scene.add(moonTarget);moon.target=moonTarget;
-moon.castShadow=true;moon.shadow.mapSize.set(2048,2048);
+moon.castShadow=true;moon.shadow.mapSize.set(1536,1536);
 moon.shadow.camera.left=-72;moon.shadow.camera.right=72;moon.shadow.camera.top=72;moon.shadow.camera.bottom=-72;
 moon.shadow.camera.near=1;moon.shadow.camera.far=230;moon.shadow.bias=-0.0016;moon.shadow.normalBias=0.025;
 const bounce=new THREE.DirectionalLight(0xffffff,0.08);bounce.position.set(0.3,-1,0.2);scene.add(bounce);
@@ -373,7 +373,7 @@ function resize(){
 window.addEventListener('resize',resize);
 function applyQuality(){
   const hi=Q.level==='high';
-  renderer.setPixelRatio(hi?Math.min(window.devicePixelRatio||1,2):1);renderer.shadowMap.enabled=hi;
+  renderer.setPixelRatio((hi?Math.min(window.devicePixelRatio||1,1.5):1)*(Q.scale||1));renderer.shadowMap.enabled=hi;
   if(hi)initComposer();
   resize();
   if(typeof rain!=='undefined')rain.visible=hi&&THEME[MODE].rain;
@@ -2482,7 +2482,7 @@ function readInput(){
   const up=K.KeyW||K.ArrowUp||T.gas,dn=K.KeyS||K.ArrowDown||T.brk,lf=K.KeyA||K.ArrowLeft||T.left,rt=K.KeyD||K.ArrowRight||T.right;
   I.thr=up?1:0;I.brk=dn?1:0;I.str=(lf?1:0)-(rt?1:0);I.hb=(K.Space||T.hb)?1:0;I.nit=(K.ShiftLeft||K.ShiftRight||T.nit)?1:0;
 }
-function togglePause(){if(G.mode!=='playing')return;G.paused=!G.paused;document.body.classList.toggle('paused',G.paused);}
+function togglePause(){if(G.mode!=='playing')return;if(typeof WM!=='undefined'&&WM.open){WM.close();return;}G.paused=!G.paused;document.body.classList.toggle('paused',G.paused);}
 window.addEventListener('keydown',e=>{
   if(e.target&&e.target.tagName==='INPUT'){if(e.target.id==='codeIn'&&e.code==='Enter')redeem();return;}   // typing a code or using a slider must not drive the car
   K[e.code]=true;
@@ -2497,7 +2497,7 @@ window.addEventListener('keydown',e=>{
     if(e.code==='Enter')startPursuit();else if(e.code==='KeyG')toGarage();
   }
   if(e.code==='KeyP'||e.code==='Escape')togglePause();
-  if(e.code==='KeyM')toggleMute();
+  if(e.code==='KeyK')toggleMute();
   if(e.code==='KeyQ')toggleQuality();
   if(e.code==='KeyN')toggleTheme();
   X.key(e);
@@ -2610,8 +2610,8 @@ function startPursuit(){
   G.lastSeen.x=P.x;G.lastSeen.z=P.z;
   setMode('playing');
   for(let i=0;i<3;i++)spawnCop(pickKind(),true);
-  spawnTraffic(Q.level==='high'?420:200);spawnTownCars();
-  spawnPeds(Q.level==='high'?600:260);
+  spawnTraffic(Q.level==='high'?300:140);spawnTownCars();
+  spawnPeds(Q.level==='high'?320:150);
   $('toasts').innerHTML='';POPS.forEach(p=>p.el.remove());POPS.length=0;toast('Pursuit started. Lose them.','red');sfxBeep(660,0.15);
   camH=P.th;camPos.set(P.x-Math.sin(P.th)*9,(P.gy||0)+3.5,P.z-Math.cos(P.th)*9);
   X.onStart();
@@ -2785,18 +2785,27 @@ function syncMeshes(dt){
   TRSH.count=shN;TRSH.instanceMatrix.needsUpdate=true;
   renderPeds();
 }
+const PAIRS_OUT=[],PAIR_GRID=new Map();
+function buildPairs(){   // broad phase: only cars within 24 m of each other can touch, so skip the other ~99.9% of pairs
+  PAIRS_OUT.length=0;PAIR_GRID.clear();
+  const n=cars.length;
+  for(let i=0;i<n;i++){const c=cars[i];if(c.far)continue;const key=(Math.floor(c.x/24)+512)*1024+(Math.floor(c.z/24)+512),a=PAIR_GRID.get(key);if(a)a.push(i);else PAIR_GRID.set(key,[i]);}
+  for(let i=0;i<n;i++){const c=cars[i];if(c.far)continue;const ix=Math.floor(c.x/24)+512,iz=Math.floor(c.z/24)+512;
+    for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const a=PAIR_GRID.get((ix+dx)*1024+iz+dz);if(!a)continue;for(let q=0;q<a.length;q++){const j=a[q];if(j>i)PAIRS_OUT.push(c,cars[j]);}}}
+  return PAIRS_OUT;
+}
 function update(dt){
   G.time+=dt;NAV.budget=2;
   if(G.mode==='playing')readInput();
   else{const I=player.in;I.thr=I.brk=I.str=I.hb=I.nit=0;}
-  if(((FARTICK=(FARTICK+1)|0)&31)===0)for(const c of cars)if(c.town)c.far=Math.hypot(c.x-player.x,c.z-player.z)>550;
+  if(((FARTICK=(FARTICK+1)|0)&31)===0)for(const c of cars){const k=c.kind;if(c.town)c.far=Math.hypot(c.x-player.x,c.z-player.z)>550;else if(k==='traffic'||k==='parked')c.far=Math.hypot(c.x-player.x,c.z-player.z)>(c.far?380:430);}
   for(const c of cars)if(c!==player&&!c.far)aiUpdate(c,dt);
   X.pre(dt);
-  const steps=Math.max(1,Math.ceil(dt/0.0125)),sdt=dt/steps;
+  const steps=Math.max(1,Math.ceil(dt/0.0125)),sdt=dt/steps,pairs=buildPairs();
   for(let s=0;s<steps;s++){
     for(const c of cars)if(!c.far)stepCar(c,sdt);
     for(const c of cars)if(!c.far)collideWorld(c);
-    for(let i=0;i<cars.length;i++)for(let j=i+1;j<cars.length;j++)collideCars(cars[i],cars[j]);
+    for(let k=0;k<pairs.length;k+=2)collideCars(pairs[k],pairs[k+1]);
   }
   for(const c of cars){vertUpdate(c,dt);waterUpdate(c,dt);}
   X.update(dt);MP.update(dt);gameLogic(dt);effects(dt);updatePeds(dt);updateLeisure(dt);updateHazards(dt);
@@ -2904,7 +2913,7 @@ function frame(now){
   const raw=Math.min(0.05,Math.max(0,(now-last)/1000));last=now;
   G.clock+=raw;
   let dt=0;
-  if(G.mode==='playing'&&!G.paused)dt=raw;
+  if(G.mode==='playing'&&!G.paused&&!(WM.open&&!MP.on))dt=raw;   // the map pauses a solo game, an online game keeps running
   else if(G.mode==='ended')dt=raw*0.35;
   if(G.mode==='ended'){G.endT+=raw;if(!G.endShown&&G.endT>0.9){G.endShown=true;document.body.classList.add('endcard');}}
   if(dt>0)update(dt);
@@ -2914,12 +2923,19 @@ function frame(now){
   if(dt>0)syncMeshes(dt);
   else if(G.mode==='menu')syncMeshes(raw);
   updateCamera(G.paused?0.0001:(dt||raw),raw);
-  updatePops(G.paused?0:raw);updateCash(G.paused?0:raw);renderHazards();updateSignals(G.time);updateWater(G.clock);PF.update(player.x,player.z);updateShadowFollow(player.x,player.z);audioUpdate();updateHUD();drawMini();
-  skyGroup.position.copy(camera.position);updateRain(raw,player.vx,player.vz);X.frame(raw);MP.frame(raw);
+  updatePops(G.paused?0:raw);updateCash(G.paused?0:raw);renderHazards();updateSignals(G.time);updateWater(G.clock);PF.update(player.x,player.z);updateShadowFollow(player.x,player.z);audioUpdate();updateHUD();if(((Q.mm=(Q.mm+1)|0)&1)===0)drawMini();
+  skyGroup.position.copy(camera.position);updateRain(raw,player.vx,player.vz);X.frame(raw);MP.frame(raw);WM.frame(raw);
   Q.ema=Q.ema?Q.ema*0.96+raw*0.04:raw;
-  if(G.mode==='playing'&&!G.paused&&Q.level==='high'){
-    if(Q.ema>0.0285)Q.lowT+=raw;else Q.lowT=Math.max(0,Q.lowT-raw);
-    if(Q.lowT>3){Q.level='low';Q.lowT=0;applyQuality();toast('Graphics lowered for smoother play','blue');}
+  if(G.mode==='playing'&&!G.paused){
+    // dynamic resolution: trade sharpness for smoothness automatically, and win it back when there is headroom
+    Q.drT=(Q.drT||0)+raw;
+    if(Q.drT>1.4){Q.drT=0;const fps=1/Q.ema,old=Q.scale||1;let sc=old;
+      if(fps<44&&sc>0.55)sc=Math.max(0.55,sc-0.12);else if(fps>57&&sc<1)sc=Math.min(1,sc+0.06);
+      if(Math.abs(sc-old)>0.001){Q.scale=sc;applyQuality();}}
+    if(Q.level==='high'){
+      if(Q.ema>0.0285&&(Q.scale||1)<=0.7)Q.lowT+=raw;else Q.lowT=Math.max(0,Q.lowT-raw);
+      if(Q.lowT>3){Q.level='low';Q.lowT=0;Q.scale=1;applyQuality();toast('Graphics lowered for smoother play','blue');}
+    }
   }
   if(grainPass)grainPass.uniforms.uTime.value=G.clock;
   if(Q.level==='high'&&composer){try{composer.render(raw);}catch(e){composer=null;renderer.render(scene,camera);}}
@@ -2958,7 +2974,8 @@ const X=(()=>{
   #xmsg{left:50%;top:calc(env(safe-area-inset-top,0px) + 150px);transform:translateX(-50%);text-align:center;font-weight:700;font-style:italic;font-size:26px;color:#ffd23f;white-space:nowrap}
   #xmsg small{display:block;font-size:14px;font-style:normal;color:#c3c9d8;font-weight:500}
   #xmsg.hide{color:#43e6a8}#xmsg.bad{color:#ff3358}
-  #xinfo{left:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 118px);font-size:13px;color:var(--dim);line-height:1.6}
+  #xinfo{left:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 118px);font-size:12px;color:var(--dim);line-height:1.5;opacity:.8}
+  html.mhud #xinfo,html.mhud #xscan,html.mhud #mpBoard,html.mhud .xtag{display:none!important}
   #xinfo b{color:var(--ink)}#xinfo .ms{color:var(--sodium)}
   #xscan{left:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);width:min(330px,60vw);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#9dffb0}
   #xscan div{background:rgba(6,14,10,.7);border-left:3px solid #43e6a8;padding:3px 8px;margin-top:4px;animation:pop .25s ease-out}
@@ -2999,10 +3016,10 @@ const X=(()=>{
       s.connect(f);f.connect(g);g.connect(AU.master);s.start(c.currentTime,Math.random()*0.5,0.25);}catch(e){}
   }
   function scan(msg,urgent){
-    const t=nowS();if(!urgent&&t-lastScan<3.2)return;lastScan=t;
+    const t=nowS();if(!urgent&&t-lastScan<5)return;lastScan=t;
     const d=document.createElement('div');d.innerHTML='<b>DISPATCH</b>'+msg;eScan.appendChild(d);
-    setTimeout(()=>{if(d.parentNode)d.parentNode.removeChild(d);},9000);
-    while(eScan.children.length>3)eScan.removeChild(eScan.firstChild);
+    setTimeout(()=>{if(d.parentNode)d.parentNode.removeChild(d);},6500);
+    while(eScan.children.length>2)eScan.removeChild(eScan.firstChild);
     crackle();
     if(S.voice&&!AU.muted&&window.speechSynthesis&&!speechSynthesis.pending){
       try{const u=new SpeechSynthesisUtterance(msg);u.rate=1.15;u.pitch=0.55;u.volume=Math.min(1,0.6*VOL.fx);speechSynthesis.speak(u);}catch(e){}}
@@ -3127,7 +3144,7 @@ const X=(()=>{
         const mult=Math.min(5,1+0.5*(combo-1)),total=Math.round(base*mult*bonusMul());
         const cash=Math.round(total*0.2);G.bounty+=total;G.money+=cash;G.runCash+=cash;saveMoney();run.stunt+=total;run.flips+=fl+ro;S.xp+=total/10;
         popup(P.x,gy+2.4,P.z,trickNames(fl,ro,sp,st.xp,st.xr)+'  +'+total+(mult>1?'  x'+mult.toFixed(1):''),'#ffd23f',38);
-        toast('Stunt combo +'+total+(combo>1?'  (chain x'+combo+')':''),'good');sfxBeep(900+combo*80,0.14);
+        sfxBeep(900+combo*80,0.14);
         if(Math.random()<0.5)scan('Suspect just pulled off a flip. Unbelievable.');}
       if(st.t>0.7&&dist>10){
         run.jt+=dist;
@@ -3136,7 +3153,7 @@ const X=(()=>{
           if(!(S.best[st.ramp]>=dist))S.best[st.ramp]=Math.round(dist);
           S.jumps.push({d:Math.round(dist),r:st.ramp,h:!!RAMPS[st.ramp].hid});S.jumps.sort((a,b)=>b.d-a.d);S.jumps.length=Math.min(S.jumps.length,8);
           if(dist>=30){const cash=Math.round((dist-25)*5*bonusMul());G.bounty+=dist*2;G.money+=cash;G.runCash+=cash;saveMoney();
-            popup(P.x,gy+3.4,P.z,'JUMP '+Math.round(dist)+' m  +$'+cash,'#7dff9a',34);toast('Jump '+Math.round(dist)+' m  +$'+cash,'good');S.xp+=dist/2;}}
+            popup(P.x,gy+3.4,P.z,'JUMP '+Math.round(dist)+' m  +$'+cash,'#7dff9a',34);S.xp+=dist/2;}}
         if(st.t>1.6)scan('Suspect just went airborne. Repeat, airborne.');
         save();}
     }else{P.xp=0;P.xr=0;}
@@ -3419,7 +3436,8 @@ const X=(()=>{
     '<p>One car, one city, every unit on the radio. Break line of sight, keep moving, and stay out of sight until your cooldown fills.</p>'+
     '<div><h3>Driving</h3><div class="hr"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or arrow keys to drive<br><kbd>Space</kbd> handbrake drift &middot; <kbd>Shift</kbd> nitro<br>On a phone or tablet use the on-screen buttons.</div></div>'+
     '<div><h3>Air tricks</h3><div class="hr">Tricks only work once you are <b>5 m or more above the ground</b>. Lower than that the car simply flies.<br><kbd>W</kbd> / <kbd>S</kbd> front and back flips &middot; <kbd>A</kbd> / <kbd>D</kbd> barrel rolls &middot; <kbd>Space</kbd> 360 spin<br>Land level to bank the combo. Chain landings within 7 seconds for a bigger multiplier. A crooked landing wipes you out.</div></div>'+
-    '<div><h3>Game</h3><div class="hr"><kbd>P</kbd> pause &middot; <kbd>M</kbd> mute &middot; <kbd>Q</kbd> graphics &middot; <kbd>N</kbd> day / night<br><kbd>R</kbd> change radio station (or the FM button) &middot; <kbd>V</kbd> scanner voice on / off<br><kbd>U</kbd> garage, missions and daily challenges (main screen) &middot; <kbd>H</kbd> this help<br>When playing online: <kbd>1</kbd> to <kbd>4</kbd> send quick chat messages</div></div>'+
+    '<div><h3>Game</h3><div class="hr"><kbd>P</kbd> pause &middot; <kbd>K</kbd> mute &middot; <kbd>M</kbd> map &middot; <kbd>H</kbd> minimal HUD in game &middot; <kbd>Q</kbd> graphics &middot; <kbd>N</kbd> day / night<br><kbd>R</kbd> change radio station (or the FM button) &middot; <kbd>V</kbd> scanner voice on / off<br><kbd>U</kbd> garage, missions and daily challenges (main screen) &middot; <kbd>H</kbd> this help<br>When playing online: <kbd>1</kbd> to <kbd>4</kbd> send quick chat messages</div></div>'+
+    '<div><h3>Map</h3><div class="hr">Press <kbd>M</kbd> in game (or the MAP button) for the full map. A solo game pauses while it is open. Drag to move, wheel or +/- to zoom.</div></div>'+
     '<div><h3>Tips</h3><div class="hr"><b>Safe houses:</b> between the skyscrapers, drive down a narrow alley into a green-lit garage bay and stop. Cops more than 28 m away lose you and your cooldown fills faster. They show as green squares on the minimap.<br><b>Hidden jumps:</b> secret ramps are not on the map. A gold light shows when you are within about 150 m. Long jumps pay cash.<br><b>Weather</b> changes the grip and how far cops can see you.<br><b>Multiplayer:</b> press the Multiplayer button on the main screen to host a server (up to 10 players) or join one with a 5 character code. Everyone shares the city but has their own police.</div></div></div>';
   const helpBtn=document.createElement('button');helpBtn.id='helpBtn';helpBtn.textContent='?';helpBtn.setAttribute('aria-label','How to play and controls');
   $('menu').appendChild(helpBtn);
@@ -3505,16 +3523,38 @@ const X=(()=>{
     else if(e.code==='KeyV'){S.voice=!S.voice;save();toast('Scanner voice '+(S.voice?'on':'off'),'blue');}
     else if(e.code==='KeyU'&&G.mode==='menu'){if(eGar.classList.contains('on'))closePanel();else openPanel();}
     else if(e.code==='KeyH'&&G.mode==='menu')toggleHelp();
+    else if(e.code==='KeyH'){const on=document.documentElement.classList.toggle('mhud');toast('Minimal HUD '+(on?'on':'off'),'blue');}
+    else if(e.code==='KeyM'&&G.mode==='playing')WM.toggle();
     else if(e.code==='Escape'){if(eHelp.classList.contains('on'))toggleHelp(false);else if(eGar.classList.contains('on'))closePanel();}
+  };
+  function houseIcon(c,x,y,sz){   // little green house with a dark door, readable on any background
+    c.fillStyle='#43e6a8';c.strokeStyle='#04261a';c.lineWidth=Math.max(1.5,sz*0.22);c.lineJoin='round';
+    c.beginPath();c.moveTo(x-sz,y+sz*0.85);c.lineTo(x-sz,y-sz*0.1);c.lineTo(x,y-sz);c.lineTo(x+sz,y-sz*0.1);c.lineTo(x+sz,y+sz*0.85);c.closePath();c.fill();c.stroke();
+    c.fillStyle='#04261a';c.fillRect(x-sz*0.32,y+sz*0.05,sz*0.64,sz*0.8);
+  }
+  api.mapLayer=function(ctx,w2s,k){
+    for(const r of RAMPS){if(r.hid&&!r.found)continue;const q=w2s(r.x,r.z);ctx.fillStyle='#ffd23f';ctx.fillRect(q[0]-3,q[1]-3,6,6);}
+    ctx.font='700 11px system-ui,sans-serif';ctx.textAlign='center';
+    for(const h of HID){const q=w2s(h.x,h.z);houseIcon(ctx,q[0],q[1],9);
+      if(k>0.28){ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.8)';ctx.strokeText('Safe house',q[0],q[1]+23);ctx.fillStyle='#8dffd0';ctx.fillText('Safe house',q[0],q[1]+23);}}
+    if(run.target!=null&&!run.got&&!run.failed){const h=HID[run.target],q=w2s(h.x,h.z),pr=8+4*Math.sin(G.clock*5);ctx.strokeStyle='#ffd23f';ctx.lineWidth=3;ctx.beginPath();ctx.arc(q[0],q[1],pr,0,TAU);ctx.stroke();}
   };
   api.upg=applyUpg;
   api.defFor=defFor;
   api.hid=r=>r.hid&&!r.found;
   api.mini=function(mp,dot,cx,cy,R){
-    mctx.fillStyle='#43e6a8';
-    for(const h of HID){const q=mp(h.x,h.z);if(Math.hypot(q[0]-cx,q[1]-cy)<R-4)mctx.fillRect(q[0]-3,q[1]-3,6,6);}
+    let near=null,nd=1e18;
+    for(const h of HID){const d=Math.hypot(h.x-player.x,h.z-player.z);if(d<nd){nd=d;near=h;}
+      const q=mp(h.x,h.z);if(Math.hypot(q[0]-cx,q[1]-cy)<R-8)houseIcon(mctx,q[0],q[1],6);}
+    if(near){   // arrow on the rim pointing at the nearest safe house when it is off the minimap
+      const q=mp(near.x,near.z),dx=q[0]-cx,dy=q[1]-cy,d=Math.hypot(dx,dy);
+      if(d>=R-8){const a=Math.atan2(dy,dx),px=cx+Math.cos(a)*(R-10),py=cy+Math.sin(a)*(R-10);
+        mctx.save();mctx.translate(px,py);mctx.rotate(a);mctx.fillStyle='#43e6a8';mctx.strokeStyle='#04261a';mctx.lineWidth=2;
+        mctx.beginPath();mctx.moveTo(7,0);mctx.lineTo(-5,5);mctx.lineTo(-5,-5);mctx.closePath();mctx.fill();mctx.stroke();mctx.restore();
+        mctx.font='700 10px system-ui,sans-serif';mctx.textAlign='center';mctx.lineWidth=3;mctx.strokeStyle='rgba(0,0,0,.85)';
+        const tx=cx+Math.cos(a)*(R-26),ty=cy+Math.sin(a)*(R-26)+3,t=Math.round(nd)+' m';mctx.strokeText(t,tx,ty);mctx.fillStyle='#8dffd0';mctx.fillText(t,tx,ty);}
+    }
     if(run.target!=null&&!run.got&&!run.failed){const h=HID[run.target];dot(h.x,h.z,(Math.floor(G.clock*3)%2)?'#ffd23f':'#ffffff',8,true);}
-    if(hidden){mctx.fillStyle='#43e6a8';}
   };
   api.init=function(){ensureDay();wxSnap();if(S.paint[G.sel])setCar(G.sel);else applyUpg();};
   return api;
@@ -3890,6 +3930,12 @@ const MP=(()=>{
       const q=mp(r.g.x,r.g.z);
       if(Math.hypot(q[0]-cx,q[1]-cy)<R2-4){mctx.fillStyle='#5be3ff';mctx.beginPath();mctx.arc(q[0],q[1],4,0,TAU);mctx.fill();mctx.strokeStyle='#fff';mctx.lineWidth=1.2;mctx.stroke();}}
   };
+  api.mapLayer=function(ctx,w2s){
+    ctx.font='700 12px system-ui,sans-serif';ctx.textAlign='center';
+    for(const id in R){const r=R[id];if(!r.vis)continue;const q=w2s(r.g.x,r.g.z);
+      ctx.fillStyle='#5be3ff';ctx.beginPath();ctx.arc(q[0],q[1],5,0,TAU);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+      ctx.fillStyle='#fff';ctx.fillText(net.roster[id]?net.roster[id].n:'?',q[0],q[1]-9);}
+  };
   api.tag=function(){return net.role?'<b>Online</b> '+net.code+'  '+Object.keys(net.roster).length+'/'+MAX+'  \u00b7  1-4 chat':'';};
   api.init=function(){
     refreshBtn();
@@ -3897,6 +3943,92 @@ const MP=(()=>{
     if(room){room=room.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,5);if(room.length===5){net.pending=room;setMsg('Invite found for server '+room+'. Check your name and press Join.');openLobby();}}
   };
   api._net=net;api._leave=leave;api._R=R;api._join=joinServer;api._host=hostServer;
+  return api;
+})();
+
+
+/* ================= WORLD MAP (press M) ================= */
+const WM=(()=>{
+  const api={open:false};
+  const css=document.createElement('style');
+  css.textContent=`#xmap{position:fixed;inset:0;z-index:7;display:none;background:#070912;touch-action:none}
+  #xmap.on{display:block}#xmap canvas{width:100%;height:100%;display:block;cursor:grab}
+  #xmapbar{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);left:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  #xmapbar button{padding:8px 13px;min-height:0;font-size:14px}
+  #xmapkey{position:absolute;left:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);font-size:12.5px;color:#aab1c4;text-shadow:0 1px 4px #000;line-height:1.75;pointer-events:none}
+  #xmapkey i{display:inline-block;width:10px;height:10px;margin-right:7px;vertical-align:-1px}`;
+  document.head.appendChild(css);
+  const el=document.createElement('div');el.id='xmap';
+  el.innerHTML='<canvas></canvas><div id="xmapbar"><button class="ghost qual" data-w="in">+</button><button class="ghost qual" data-w="out">&minus;</button><button class="ghost qual" data-w="me">Centre on me</button><button class="ghost qual" data-w="close">Close (M)</button></div>'+
+    '<div id="xmapkey"><div><i style="background:#fff"></i>You</div><div><i style="background:#ff3358"></i>Police</div><div><i style="background:#43e6a8;border-radius:3px"></i>Safe house (garage)</div><div><i style="background:#ffd23f"></i>Jump ramp</div><div><i style="background:#5be3ff"></i>Other players</div><div>Wheel or +/- to zoom, drag to move</div></div>';
+  document.body.appendChild(el);
+  const cv=el.querySelector('canvas'),ctx=cv.getContext('2d');
+  const BIO=['#4f8a3c','#2f6a3a','#8aa34a','#d4b36a','#b5693a','#e6eef6','#5a4040'];
+  let base=null,zoom=3,cx=0,cz=0,acc=0;
+  function buildBase(){
+    const S=480,c=document.createElement('canvas');c.width=c.height=S;const g=c.getContext('2d');
+    const img=g.createImageData(S,S),d=img.data,pal=BIO.map(h=>{const n=parseInt(h.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255];});
+    for(let py=0;py<S;py++)for(let px=0;px<S;px++){
+      const x=-WH+(px+0.5)/S*2*WH,z=-WH+(py+0.5)/S*2*WH;let r,gc,b;
+      if(x>COAST){const t=clamp((x-COAST)/600,0,1);r=14-8*t;gc=64-30*t;b=108-40*t;}
+      else{biomeAt(x,z);const col=pal[bwt>0.5?bt1:bt2]||pal[0],sh=0.78+0.34*clamp(terrH(x,z)/70,0,1);r=col[0]*sh;gc=col[1]*sh;b=col[2]*sh;}
+      const i=(py*S+px)*4;d[i]=r;d[i+1]=gc;d[i+2]=b;d[i+3]=255;
+    }
+    g.putImageData(img,0,0);
+    g.setTransform(S/(2*WH),0,0,S/(2*WH),S/2,S/2);
+    g.fillStyle='#2a6fb0';for(const p of PONDS){g.beginPath();g.arc(p[0],p[1],p[2],0,TAU);g.fill();}
+    g.strokeStyle='#9a9fae';g.lineWidth=26;g.lineCap='round';for(const l of LINKS){g.beginPath();g.moveTo(l[0],l[1]);g.lineTo(l[2],l[3]);g.stroke();}
+    for(const t of TOWNS){g.fillStyle='#6d7389';g.beginPath();g.arc(t.x,t.z,t.r*0.75,0,TAU);g.fill();}
+    g.fillStyle='#0d0f18';g.fillRect(-HALF-6,-HALF-6,HALF*2+12,HALF*2+12);
+    for(const bk of blocks){g.fillStyle=bk.park?'#2a6a3c':'#3d4566';g.fillRect(bk.x0,bk.z0,bk.x1-bk.x0,bk.z1-bk.z0);}
+    base=c;
+  }
+  function draw(){
+    const W=innerWidth,H=innerHeight,dpr=Math.min(devicePixelRatio||1,1.5);
+    if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);}
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.fillStyle='#070912';ctx.fillRect(0,0,W,H);
+    const k=Math.min(W,H)*0.94/(2*WH)*zoom,ox=W/2-cx*k,oy=H/2-cz*k;
+    ctx.imageSmoothingEnabled=true;ctx.drawImage(base,ox-WH*k,oy-WH*k,2*WH*k,2*WH*k);
+    ctx.strokeStyle='#2c3350';ctx.lineWidth=2;ctx.strokeRect(ox-WH*k,oy-WH*k,2*WH*k,2*WH*k);
+    const w2s=(x,z)=>[ox+x*k,oy+z*k];
+    ctx.font='600 12px system-ui,sans-serif';ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.85)';
+    for(const t of TOWNS){if(t.village&&zoom<4)continue;const q=w2s(t.x,t.z);if(q[0]<-60||q[1]<-20||q[0]>W+60||q[1]>H+20)continue;ctx.fillText(t.village?'Village':t.style.charAt(0).toUpperCase()+t.style.slice(1)+' town',q[0],q[1]-t.r*k*0.75-6);}
+    if(zoom>=2){const q=w2s(0,-HALF-24);ctx.fillText('City',q[0],q[1]);}
+    X.mapLayer(ctx,w2s,k);MP.mapLayer(ctx,w2s,k);
+    for(const c of cars){if(c===player||c.dead||c.kind==='traffic'||c.kind==='parked')continue;const q=w2s(c.x,c.z);ctx.fillStyle=(c.kind==='tank'||c.kind==='bomber')?'#ff9a2f':'#ff3358';ctx.fillRect(q[0]-2.5,q[1]-2.5,5,5);}
+    if(G.heli){const q=w2s(G.heli.x,G.heli.z);ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(q[0],q[1]-6);ctx.lineTo(q[0]+6,q[1]);ctx.lineTo(q[0],q[1]+6);ctx.lineTo(q[0]-6,q[1]);ctx.closePath();ctx.fill();}
+    const q=w2s(player.x,player.z);
+    ctx.save();ctx.translate(q[0],q[1]);ctx.rotate(Math.atan2(Math.cos(player.th),Math.sin(player.th)));
+    ctx.fillStyle='#fff';ctx.strokeStyle='#000';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(11,0);ctx.lineTo(-8,7);ctx.lineTo(-4,0);ctx.lineTo(-8,-7);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
+  }
+  const clampView=()=>{cx=clamp(cx,-WH,WH);cz=clamp(cz,-WH,WH);zoom=clamp(zoom,1,10);};
+  api.toggle=function(){if(api.open)api.close();else api.show();};
+  api.show=function(){
+    if(G.mode!=='playing')return;
+    if(!base)buildBase();
+    zoom=3;cx=player.x;cz=player.z;clampView();
+    el.style.opacity=MP.on?0.9:1;el.classList.add('on');api.open=true;draw();
+  };
+  api.close=function(){el.classList.remove('on');api.open=false;};
+  api.frame=function(raw){
+    if(!api.open)return;
+    if(G.mode!=='playing'){api.close();return;}
+    acc+=raw;if(acc<0.08)return;acc=0;draw();
+  };
+  const zoomBy=f=>{zoom*=f;clampView();draw();};
+  el.addEventListener('click',e=>{
+    const b=e.target.closest('[data-w]');if(!b)return;const a=b.dataset.w;
+    if(a==='close')api.close();else if(a==='in')zoomBy(1.4);else if(a==='out')zoomBy(1/1.4);else if(a==='me'){cx=player.x;cz=player.z;clampView();draw();}
+  });
+  cv.addEventListener('wheel',e=>{e.preventDefault();zoomBy(Math.exp(-e.deltaY*0.0016));},{passive:false});
+  cv.addEventListener('dblclick',()=>{cx=player.x;cz=player.z;clampView();draw();});
+  let drag=null;
+  cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY};try{cv.setPointerCapture(e.pointerId);}catch(_){}cv.style.cursor='grabbing';});
+  cv.addEventListener('pointermove',e=>{if(!drag)return;const k=Math.min(innerWidth,innerHeight)*0.94/(2*WH)*zoom;cx-=(e.clientX-drag.x)/k;cz-=(e.clientY-drag.y)/k;drag.x=e.clientX;drag.y=e.clientY;clampView();draw();});
+  const up=()=>{drag=null;cv.style.cursor='grab';};cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+  {const mb=document.querySelector('.mbtns');
+    if(mb){const b=document.createElement('button');b.textContent='MAP';b.setAttribute('aria-label','Open the map');b.onclick=()=>{audioInit();api.toggle();};mb.insertBefore(b,mb.firstChild);}}
   return api;
 })();
 
