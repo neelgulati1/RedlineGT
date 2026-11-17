@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>RedlineGT V0.5.1</title>
+<title>RedlineGT V0.6.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,500;0,600;0,700;1,600;1,700&display=swap" rel="stylesheet">
@@ -1520,7 +1520,7 @@ function resolveBox(c,b,off,fx,fz){
   c.x+=h.nx*h.pen;c.z+=h.nz*h.pen;
   const vn=c.vx*h.nx+c.vz*h.nz;
   if(vn<0){
-    const imp=-vn,e=imp<3?0:0.1+0.012*Math.min(imp,22);   // gentle touches do not bounce, hard hits do
+    const imp=-vn,e=imp<3?0:0.08+0.006*Math.min(imp,22);   // gentle touches do not bounce, hard hits do
     c.vx-=(1+e)*vn*h.nx;c.vz-=(1+e)*vn*h.nz;
     const nv=c.vx*h.nx+c.vz*h.nz,tx=c.vx-nv*h.nx,tz=c.vz-nv*h.nz,scrub=1-clamp(imp*0.012,0.004,0.26);   // scraping a wall costs speed, harder hits cost more
     c.vx=nv*h.nx+tx*scrub;c.vz=nv*h.nz+tz*scrub;
@@ -2504,7 +2504,7 @@ function readInput(){
   const up=K.KeyW||K.ArrowUp||T.gas,dn=K.KeyS||K.ArrowDown||T.brk,lf=K.KeyA||K.ArrowLeft||T.left,rt=K.KeyD||K.ArrowRight||T.right;
   I.thr=up?1:0;I.brk=dn?1:0;I.str=(lf?1:0)-(rt?1:0);I.hb=(K.Space||T.hb)?1:0;I.nit=(K.ShiftLeft||K.ShiftRight||T.nit)?1:0;
 }
-function togglePause(){if(G.mode!=='playing')return;if(typeof WM!=='undefined'&&WM.open){WM.close();return;}G.paused=!G.paused;document.body.classList.toggle('paused',G.paused);}
+function togglePause(){if(G.mode!=='playing')return;if(CUT.active){CUT.skip();return;}if(typeof WM!=='undefined'&&WM.open){WM.close();return;}G.paused=!G.paused;document.body.classList.toggle('paused',G.paused);}
 window.addEventListener('keydown',e=>{
   if(e.target&&e.target.tagName==='INPUT'){if(e.target.id==='codeIn'&&e.code==='Enter')redeem();return;}   // typing a code or using a slider must not drive the car
   K[e.code]=true;
@@ -2589,7 +2589,7 @@ function updateMenuUI(){
 }
 function setMode(m,extra){G.mode=m;document.body.className=m+(extra?' '+extra:'');}
 function toGarage(){
-  FOOT.reset();
+  FOOT.reset();STORY.reset();
   PEDS.length=0;HAZ.length=0;themePlay();
   for(let i=cars.length-1;i>=1;i--)removeCar(cars[i]);
   clearHazards();player.health=player.maxHealth;player.dead=false;player.in.thr=player.in.brk=player.in.str=player.in.hb=player.in.nit=0;
@@ -2626,7 +2626,7 @@ function startPursuit(){
   themeStop();
   for(let i=cars.length-1;i>=1;i--)removeCar(cars[i]);
   clearHazards();
-  const P=player;P.health=P.maxHealth;P.nitro=1;P.dead=false;P.flat=0;P.air=false;P.vyG=0;P.sp0=undefined;P.sink=0;P.swimming=false;if(!MP.place())placePlayer();
+  const P=player;P.health=P.maxHealth;P.nitro=1;P.dead=false;P.flat=0;P.air=false;P.vyG=0;P.sp0=undefined;P.sink=0;P.swimming=false;if(!MP.place()&&!STORY.place())placePlayer();
   Object.assign(G,{engaged:false,spotT:0,farT:0,lostT:0,time:0,elapsed:0,heat:1,bounty:0,cool:0,coolNeed:53,spotted:true,bust:0,wrecked:0,topSpeed:0,spawnCd:1.2,stripCd:9,rbCd:18,shake:0,endT:0,endShown:false,result:null,paused:false,near:999,units:0,dmgFlash:0,tanksActive:false,tankCd:0,runCash:0,hazOn:false,bombersOn:false,bombCd:8});
   HAZ.length=0;
   spawnCash();
@@ -2638,6 +2638,7 @@ function startPursuit(){
   $('toasts').innerHTML='';POPS.forEach(p=>p.el.remove());POPS.length=0;toast('Pursuit started. Lose them.','red');sfxBeep(660,0.15);
   camH=P.th;camPos.set(P.x-Math.sin(P.th)*9,(P.gy||0)+3.5,P.z-Math.cos(P.th)*9);
   X.onStart();
+  STORY.begin();
 }
 function endRun(res){
   if(G.mode!=='playing')return;
@@ -2651,12 +2652,13 @@ function endRun(res){
   X.onEnd(res,rows);
   $('endRows').innerHTML=rows.map(r=>'<span>'+r[0]+'</span><b>'+r[1]+'</b>').join('');
   setText($('again'),res==='escaped'?'Next pursuit':'Retry');
+  STORY.afterEnd(res);
   sfxBeep(res==='escaped'?880:220,0.4);
 }
 
 /* ================= GAME LOGIC ================= */
 function gameLogic(dt){
-  const P=player;G.elapsed+=dt;G.topSpeed=Math.max(G.topSpeed,P.speed);
+  const P=player;G.elapsed+=dt;G.topSpeed=Math.max(G.topSpeed,P.speed);const calm=STORY.calm();   // story mode can keep the cops away until the script calls them
   let spotted=false,near=999,units=0,adj=0,gnear=0;
   for(const c of cars){
     if(c===P||c.kind==='parked'||c.kind==='traffic'||c.dead)continue;
@@ -2674,16 +2676,16 @@ function gameLogic(dt){
   if(nh>G.heat){G.heat=nh;G.coolNeed=45+8*nh;toast('Heat level '+nh+'. '+HEAT_MSG[nh],'red');sfxBeep(440,0.2);}
   if(spotted)G.cool=Math.max(0,G.cool-dt*3);else if(G.engaged)G.cool+=dt*(near>400?1:(near>250?0.5:0.15))*(G.heli?0.5:1);
   if(!G.foot&&G.elapsed>6&&adj>0&&P.speed<12)G.bust+=dt*(0.11+0.09*adj)*(P.speed<4?1.4:1);else G.bust=Math.max(0,G.bust-dt*0.8);
-  if(G.cool>=G.coolNeed)endRun('escaped');
+  if(G.cool>=G.coolNeed){if(!STORY.escape())endRun('escaped');}
   else if(G.bust>=1)endRun('busted');
   else if(P.health<=0)endRun('wrecked');
   if(G.mode!=='playing')return;
   // reinforcements
   G.spawnCd-=dt;
-  if((spotted||G.cool<G.coolNeed*0.6)&&units<[0,4,7,10,13,16][G.heat]&&G.spawnCd<=0){spawnCop(pickKind(),false,G.heat>=2&&Math.random()<0.6);G.spawnCd=0.8;}
+  if(!calm&&(spotted||G.cool<G.coolNeed*0.6)&&units<[0,4,7,10,13,16][G.heat]&&G.spawnCd<=0){spawnCop(pickKind(),false,G.heat>=2&&Math.random()<0.6);G.spawnCd=0.8;}
   if(near>240)G.farT+=dt;else G.farT=0;
-  if(G.farT>3&&G.spawnCd<=0&&units<[0,4,7,10,13,16][G.heat]+2){spawnCop(pickKind(),true);G.spawnCd=0.8;G.farT=1.5;}
-  if(G.engaged&&gnear<2&&G.cool<G.coolNeed*0.6&&G.spawnCd<=0&&units<[0,4,7,10,13,16][G.heat]+3){spawnCop(pickKind(),false);G.spawnCd=0.6;}   // never let it be just the helicopter
+  if(G.farT>3&&!calm&&G.spawnCd<=0&&units<[0,4,7,10,13,16][G.heat]+2){spawnCop(pickKind(),true);G.spawnCd=0.8;G.farT=1.5;}
+  if(!calm&&G.engaged&&gnear<2&&G.cool<G.coolNeed*0.6&&G.spawnCd<=0&&units<[0,4,7,10,13,16][G.heat]+3){spawnCop(pickKind(),false);G.spawnCd=0.6;}   // never let it be just the helicopter
   // housekeeping
   for(let i=cars.length-1;i>=1;i--){
     const c=cars[i];
@@ -2779,8 +2781,11 @@ function syncMeshes(dt){
     {   // the body leans out of corners and dives under braking, then settles with a small bounce
       const h=Math.min(dt,0.033),ay=clamp((c.yawR||0)*(c.vfwd||0),-45,45);
       const tr=clamp(ay*0.0022,-0.075,0.075),tp=clamp(-(c.accel||0)*0.0024,-0.06,0.06);
-      c.rollV=(c.rollV||0)+((tr-c.roll)*355-c.rollV*15.8)*h;c.roll+=c.rollV*h;
-      c.pitchV=(c.pitchV||0)+((tp-c.pitch)*456-c.pitchV*17)*h;c.pitch+=c.pitchV*h;
+      if(!isFinite(c.roll)||!isFinite(c.rollV)){c.roll=0;c.rollV=0;}          // self-heal: a bad value must never make the car vanish
+      if(!isFinite(c.pitch)||!isFinite(c.pitchV)){c.pitch=0;c.pitchV=0;}
+      c.rollV=(c.rollV||0);c.pitchV=(c.pitchV||0);
+      c.rollV+=((tr-c.roll)*355-c.rollV*15.8)*h;c.roll+=c.rollV*h;
+      c.pitchV+=((tp-c.pitch)*456-c.pitchV*17)*h;c.pitch+=c.pitchV*h;
     }
     if(c.kind==='traffic'){
       const t=TRI[c.di];
@@ -2844,6 +2849,7 @@ let camH=0,fov=64;
 const camPos=new THREE.Vector3(0,4,-10);
 function updateCamera(dt,realDt){
   const p=player;
+  if(CUT.active){CUT.camera();return;}   // a cutscene is directing the camera
   if(G.mode==='menu'){
     const a=G.clock*0.45,cx=p.x+Math.sin(a)*7.2,cz=p.z+Math.cos(a)*7.2;
     camera.position.set(cx,2.1,cz);camera.lookAt(p.x,0.8,p.z);
@@ -2930,6 +2936,7 @@ function drawMini(){
   if(G.heli)dot(G.heli.x,G.heli.z,'#ffffff',6,true);
   X.mini(mp,dot,cx,cy,R);
   MP.mini(mp,dot,cx,cy,R);
+  STORY.mini(mp,dot,cx,cy,R);
   mctx.restore();
   mctx.fillStyle='#fff';mctx.beginPath();mctx.moveTo(cx,cy-9);mctx.lineTo(cx+6,cy+7);mctx.lineTo(cx,cy+3);mctx.lineTo(cx-6,cy+7);mctx.closePath();mctx.fill();
 }
@@ -2941,7 +2948,7 @@ function frame(now){
   const raw=Math.min(0.05,Math.max(0,(now-last)/1000));last=now;
   G.clock+=raw;
   let dt=0;
-  if(G.mode==='playing'&&!G.paused&&!(WM.open&&!MP.on))dt=raw;   // the map pauses a solo game, an online game keeps running
+  if(G.mode==='playing'&&!G.paused&&!CUT.active&&!(WM.open&&!MP.on))dt=raw;   // the map pauses a solo game, an online game keeps running
   else if(G.mode==='ended')dt=raw*0.35;
   if(G.mode==='ended'){G.endT+=raw;if(!G.endShown&&G.endT>0.9){G.endShown=true;document.body.classList.add('endcard');}}
   if(dt>0)update(dt);
@@ -3637,7 +3644,7 @@ const X=(()=>{
     '<p>One car, one city, every unit on the radio. Break line of sight, keep moving, and stay out of sight until your cooldown fills.</p>'+
     '<div><h3>Driving</h3><div class="hr"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or arrow keys to drive<br><kbd>Space</kbd> handbrake drift &middot; <kbd>Shift</kbd> nitro<br>On a phone or tablet use the on-screen buttons.</div></div>'+
     '<div><h3>Air tricks</h3><div class="hr">Tricks only work once you are <b>5 m or more above the ground</b>. Lower than that the car simply flies.<br><kbd>W</kbd> / <kbd>S</kbd> front and back flips &middot; <kbd>A</kbd> / <kbd>D</kbd> barrel rolls &middot; <kbd>Space</kbd> 360 spin<br>Land level to bank the combo. Chain landings within 7 seconds for a bigger multiplier. A crooked landing wipes you out.</div></div>'+
-    '<div><h3>Game</h3><div class="hr"><kbd>P</kbd> pause &middot; <kbd>K</kbd> mute &middot; <kbd>M</kbd> map &middot; <kbd>H</kbd> minimal HUD in game &middot; <kbd>Q</kbd> graphics &middot; <kbd>N</kbd> day / night<br><kbd>R</kbd> change radio station (or the FM button) &middot; <kbd>V</kbd> scanner voice on / off<br><kbd>F</kbd> jump out of your car, then steal another car with <kbd>F</kbd> (customise your avatar in the Garage)<br><kbd>U</kbd> garage, missions and daily challenges (main screen) &middot; <kbd>H</kbd> this help<br>When playing online: <kbd>1</kbd> to <kbd>4</kbd> send quick chat messages</div></div>'+
+    '<div><h3>Game</h3><div class="hr"><kbd>P</kbd> pause &middot; <kbd>K</kbd> mute &middot; <kbd>M</kbd> map &middot; <kbd>H</kbd> minimal HUD in game &middot; <kbd>Q</kbd> graphics &middot; <kbd>N</kbd> day / night<br><kbd>R</kbd> change radio station (or the FM button) &middot; <kbd>V</kbd> scanner voice on / off<br><kbd>F</kbd> jump out of your car, then steal another car with <kbd>F</kbd> (customise your avatar in the Garage)<br><kbd>U</kbd> garage, missions and daily challenges (main screen) &middot; <kbd>H</kbd> this help<br>When playing online: <kbd>1</kbd> to <kbd>4</kbd> send quick chat messages<br>Story mode: <kbd>Enter</kbd>, <kbd>Space</kbd> or a click advances dialogue, <kbd>Esc</kbd> skips a cutscene. Drive into a blue circle and slow under 5 mph to complete a stop.</div></div>'+
     '<div><h3>Map</h3><div class="hr">Press <kbd>M</kbd> in game (or the MAP button) for the full map. A solo game pauses while it is open. Drag to move, wheel or +/- to zoom.</div></div>'+
     '<div><h3>Tips</h3><div class="hr"><b>Safe houses:</b> between the skyscrapers, drive down a narrow alley into a green-lit garage bay and stop. Cops more than 28 m away lose you and your cooldown fills faster. They show as green squares on the minimap.<br><b>Hidden jumps:</b> secret ramps are not on the map. A gold light shows when you are within about 150 m. Long jumps pay cash.<br><b>Weather</b> changes the grip and how far cops can see you.<br><b>Multiplayer:</b> press the Multiplayer button on the main screen to host a server (up to 10 players) or join one with a 5 character code. Everyone shares the city but has their own police.</div></div></div>';
   const helpBtn=document.createElement('button');helpBtn.id='helpBtn';helpBtn.textContent='?';helpBtn.setAttribute('aria-label','How to play and controls');
@@ -3662,7 +3669,7 @@ const X=(()=>{
   let missT=0;
   api.update=function(dt){
     if(G.mode!=='playing')return;
-    stuntLogic(dt);hideLogic(dt);jumpSpots(dt);scanEvents(dt);copBehaviour(dt);FOOT.update(dt);
+    stuntLogic(dt);hideLogic(dt);jumpSpots(dt);scanEvents(dt);copBehaviour(dt);FOOT.update(dt);STORY.update(dt);
     if(hidden)setMsg('HIDDEN<small>Stay put. Cooldown is filling'+(G.heli?' (the helicopter can still see you)':'')+'</small>','hide');
     else if(hideNote>0&&!wasAir)setMsg('Too close<small>A unit is within 28 m, your cover is blown</small>','bad');
     else if(G.foot)setMsg(FOOT.hintHtml(),'hide');
@@ -3680,7 +3687,7 @@ const X=(()=>{
   }
   api.pre=function(dt){if(G.mode==='playing'){sightFilter();blockerLogic();FOOT.pre(dt);}};
   api.frame=function(raw){
-    weatherFrame(G.paused?0:raw);audioFrame();FOOT.frame(Math.min(raw,0.1));
+    weatherFrame(G.paused?0:raw);audioFrame();FOOT.frame(Math.min(raw,0.1));CUT.frame(raw);STORY.frame(raw);
     if(G.mode!=='playing'&&!wasAir&&eMsg._h)setMsg('');
   };
   api.onStart=function(){
@@ -3692,7 +3699,7 @@ const X=(()=>{
     ensureDay();closePanel();setTarget();
     W.tk=wxPick();W.timer=rand(80,140);wxSnap();
     eScan.innerHTML='';lastScan=-9;
-    scan('All units, suspect fleeing in a '+CARS[G.sel].name+'. Weather: '+WX[W.tk].n.toLowerCase()+'.',true);
+    if(!STORY.hasPending())scan('All units, suspect fleeing in a '+CARS[G.sel].name+'. Weather: '+WX[W.tk].n.toLowerCase()+'.',true);
     missT=0;infoT=0;
     if(RAD.ctx){RAD.step=0;RAD.next=0;}
   };
@@ -3745,7 +3752,10 @@ const X=(()=>{
     if(run.target!=null&&!run.got&&!run.failed){const h=HID[run.target],q=w2s(h.x,h.z),pr=8+4*Math.sin(G.clock*5);ctx.strokeStyle='#ffd23f';ctx.lineWidth=3;ctx.beginPath();ctx.arc(q[0],q[1],pr,0,TAU);ctx.stroke();}
   };
   api.upg=applyUpg;
-  api.look=()=>AVT.clean(S.avatar);
+  let lookOv=null;
+  api.look=()=>AVT.clean(lookOv||S.avatar);
+  api.setLook=l=>{lookOv=l;};
+  api.setWeather=function(k,lock){W.tk=k;W.timer=lock?1e9:rand(80,140);wxSnap();};
   api.defFor=defFor;
   api.hid=r=>r.hid&&!r.found;
   api.mini=function(mp,dot,cx,cy,R){
@@ -4194,6 +4204,24 @@ const FOOT=(()=>{
   const removeFoot=i=>{const f=list[i];scene.remove(f.m.group);list.splice(i,1);};
 
   /* ----- jump out ----- */
+  function becomeAvatar(){
+    const P=player;
+    G.foot={phase:0};swapped=true;
+    P.mesh.group.visible=false;
+    P.offs=[0,0,0];P.rad=0.5;P.maxHealth=400;P.health=400;P.armor=1;P.speedMul=1;P.accMul=1;P.upGrip=1;P.upNit=1;P.spin=0;P.nitroOn=false;
+    if(av)scene.remove(av.group);
+    av=AVT.build(X.look());scene.add(av.group);av.group.visible=true;
+    spawnT=2.5;carTime=0;
+  }
+  api.beginFoot=function(){becomeAvatar();player.vx=0;player.vz=0;player.speed=0;};      // story mode: start the run on foot with no car left behind
+  api.giveCar=function(def){                                                             // story mode: put the player straight into a given car
+    const P=player;
+    scene.remove(P.mesh.group);P.def=def;P.mesh=buildCarMesh(def,true);scene.add(P.mesh.group);P.mesh.group.visible=true;
+    P.offs=[def.len*0.275,0,-def.len*0.275];P.rad=def.wid*0.5+0.06;P.armor=TUNE.playerArmor;
+    P.maxHealth=def.hp*TUNE.hpMul;P.health=P.maxHealth;P.speedMul=1;P.accMul=1;P.upGrip=1;P.upNit=1;P.mineCar=false;P.flat=0;P.nitro=1;P.nitroOn=false;
+    G.foot=null;if(av)av.group.visible=false;swapped=true;carTime=0;attachLights();
+  };
+  api.clearCops=function(){for(let i=list.length-1;i>=0;i--)removeFoot(i);};
   function exitCar(){
     const P=player;
     if(G.mode!=='playing'||G.paused||G.foot||P.dead||P.air||P.swimming)return;
@@ -4202,13 +4230,8 @@ const FOOT=(()=>{
     ab.kind='parked';ab.x=P.x;ab.z=P.z;ab.th=P.th;ab.vx=P.vx;ab.vz=P.vz;ab.spin=P.spin*0.3;ab.armor=1;ab.mine=P.mineCar!==false;ab.empty=true;
     ab.maxHealth=def.hp;ab.health=def.hp*clamp(P.health/P.maxHealth,0.05,1);
     cars.push(ab);
-    G.foot={phase:0};swapped=true;
-    P.mesh.group.visible=false;
-    P.offs=[0,0,0];P.rad=0.5;P.maxHealth=400;P.health=400;P.armor=1;P.speedMul=1;P.accMul=1;P.upGrip=1;P.upNit=1;
-    P.x+=Math.cos(P.th)*2.4;P.z-=Math.sin(P.th)*2.4;P.vx*=0.5;P.vz*=0.5;P.spin=0;P.nitroOn=false;
-    if(av)scene.remove(av.group);
-    av=AVT.build(X.look());scene.add(av.group);av.group.visible=true;
-    spawnT=2.5;carTime=0;
+    becomeAvatar();
+    P.x+=Math.cos(P.th)*2.4;P.z-=Math.sin(P.th)*2.4;P.vx*=0.5;P.vz*=0.5;
     spawnNear(2);
     toast('You bailed out. Get away from the cops and steal a car (F)','blue');sfxBeep(520,0.1);
   }
@@ -4239,12 +4262,12 @@ const FOOT=(()=>{
     for(const k of cars)if(k.empty&&CARCOPS[k.kind])k.empty=false;                                  // cops climb back into their cruisers
     for(let i=list.length-1;i>=0;i--)if(list[i].car&&list[i].car!==c&&cars.indexOf(list[i].car)>=0)removeFoot(i);
     G.foot=null;if(av)av.group.visible=false;carTime=0;
-    attachLights();
+    attachLights();STORY.event('car');
     G.bounty+=75;popup(P.x,(P.gy||0)+2.6,P.z,'CAR STOLEN  +75','#ffd23f',34);
     toast('You stole a '+carName(c)+(traffic?'. It is no supercar, keep moving.':'.'),'good');sfxBeep(760,0.14);
   }
   api.toggle=function(){
-    if(G.mode!=='playing'||G.paused)return;
+    if(G.mode!=='playing'||G.paused||CUT.active)return;
     if(!G.foot){exitCar();return;}
     const c=findCar();
     if(!c){toast('No car within reach. Cop cruisers are only free once the cop steps out.','blue');return;}
@@ -4305,7 +4328,7 @@ const FOOT=(()=>{
         }
       }
       // more cops on foot
-      spawnT-=dt;if(spawnT<=0){spawnT=2.6;if(list.length<cap())spawnNear(1);}
+      spawnT-=dt;if(spawnT<=0){spawnT=2.6;if(list.length<cap()&&!STORY.calm())spawnNear(1);}
       hintT-=dt;if(hintT<=0){hintT=0.15;hint=findCar();}
     }else carTime+=dt;
     let touching=0;
@@ -4350,6 +4373,477 @@ const FOOT=(()=>{
   };
   {const mb=document.querySelector('.mbtns');
     if(mb){const b=document.createElement('button');b.textContent='F';b.setAttribute('aria-label','Get out of the car or steal a car');b.onclick=()=>{audioInit();api.toggle();};mb.insertBefore(b,mb.firstChild);}}
+  return api;
+})();
+
+/* ================= CUTSCENES: letterbox, scripted camera, actors, typed dialogue ================= */
+const CUT=(()=>{
+  const api={active:false,people:{}};
+  const css=document.createElement('style');
+  css.textContent=`
+  #cutbars div{position:fixed;left:0;right:0;height:0;background:#000;z-index:11;transition:height .7s ease;pointer-events:none}
+  #cutbars .t{top:0}#cutbars .b{bottom:0}
+  html.cut #cutbars div{height:11vh}
+  html.cut #hud,html.cut #xinfo,html.cut #xscan,html.cut #xmsg,html.cut #mpBoard,html.cut #xobj,html.cut .mbtns,html.cut .xtag{display:none!important}
+  #cutfade{position:fixed;inset:0;background:#000;opacity:0;z-index:12;pointer-events:none}
+  #cuttitle{position:fixed;inset:0;z-index:13;display:none;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;text-align:center;color:#fff;text-shadow:0 4px 24px #000;transition:opacity .6s}
+  #cuttitle b{font-size:clamp(26px,6vw,62px);letter-spacing:.2em;font-style:italic}
+  #cuttitle span{margin-top:12px;font-size:clamp(13px,2.3vw,21px);letter-spacing:.32em;color:var(--sodium);text-transform:uppercase}
+  #cutbox{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 12vh);transform:translateX(-50%);width:min(780px,94vw);z-index:14;display:none;gap:14px;align-items:flex-start;background:rgba(8,10,16,.9);border:1px solid var(--line);padding:12px 16px;cursor:pointer;user-select:none}
+  #cutbox canvas{flex:none;width:72px;height:84px;border:1px solid var(--line);background:#10131c}
+  #cutbox .who{font-size:12px;letter-spacing:.2em;font-weight:700;margin-bottom:4px}
+  #cutbox .tx{font-size:clamp(14px,2.2vw,18px);line-height:1.55;color:#eef1f8;min-height:2.9em}
+  #cutbox .nx{font-size:11px;color:var(--dim);text-align:right;margin-top:4px;letter-spacing:.1em}
+  #cutskip{position:fixed;top:calc(env(safe-area-inset-top,0px) + 1.6vh);right:16px;z-index:15;display:none;font-size:12px;color:#aab1c4;letter-spacing:.08em;pointer-events:none}
+  html.cut #cutskip{display:block}
+  `;
+  document.head.appendChild(css);
+  const mk=(tag,id)=>{const e=document.createElement(tag);if(id)e.id=id;document.body.appendChild(e);return e;};
+  const bars=mk('div','cutbars');bars.innerHTML='<div class="t"></div><div class="b"></div>';
+  const eFade=mk('div','cutfade'),eTitle=mk('div','cuttitle'),eBox=mk('div','cutbox'),eSkip=mk('div','cutskip');
+  eSkip.textContent='Enter / click: next     Esc: skip';
+  eBox.innerHTML='<canvas width="72" height="84"></canvas><div style="flex:1"><div class="who"></div><div class="tx"></div><div class="nx">NEXT \u25b8</div></div>';
+  const eWho=eBox.querySelector('.who'),eTx=eBox.querySelector('.tx'),eNx=eBox.querySelector('.nx'),ePort=eBox.querySelector('canvas');
+  const root=document.documentElement;
+
+  let st=null;                    // running script
+  const cam={p:[0,2,0],l:[0,1,0],p0:[0,2,0],p1:[0,2,0],l0:[0,1,0],l1:[0,1,0],t:1,dur:1,f0:55,f1:55,fov:55};
+  const actors={};
+  const sm=t=>t*t*(3-2*t),lp=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+  // positions are written relative to an anchor: [side (left +), up, forward] along the anchor's heading
+  function W(rel){const a=st.anchor,c=Math.cos(a.th),s=Math.sin(a.th);return[a.x+rel[0]*c+rel[2]*s,a.y+rel[1],a.z-rel[0]*s+rel[2]*c];}
+  function portrait(who){
+    const c=ePort.getContext('2d'),p=api.people[who];c.fillStyle='#10131c';c.fillRect(0,0,72,84);
+    if(p&&p.look){const off=document.createElement('canvas');off.width=150;off.height=240;AVT.draw2D(off.getContext('2d'),150,240,p.look);c.drawImage(off,32,0,86,104,0,0,72,84);}
+    else{c.fillStyle=p?p.col:'#888';c.font='700 30px system-ui,sans-serif';c.textAlign='center';c.fillText('\u2022))',36,52);}
+  }
+  function ensureActor(a){
+    let o=actors[a.id];
+    if(!o){o={id:a.id,av:AVT.build(a.look),x:0,z:0,th:0,tx:null,tz:null,vx:0,vz:0,moving:false};scene.add(o.av.group);actors[a.id]=o;}
+    return o;
+  }
+  function removeActor(id){const o=actors[id];if(!o)return;scene.remove(o.av.group);delete actors[id];}
+  function startBeat(b){
+    st.beat=b;st.bt=0;st.typed=0;
+    if(b.actors)for(const a of b.actors){const o=ensureActor(a),w=W([a.at[0],0,a.at[1]]);o.x=w[0];o.z=w[2];o.th=st.anchor.th+(a.face||0)*Math.PI/180;o.moving=false;o.tx=null;}
+    if(b.walk)for(const w of b.walk){const o=actors[w.id];if(!o)continue;const t=W([w.to[0],0,w.to[1]]);o.tx=t[0];o.tz=t[2];const d=Math.hypot(o.tx-o.x,o.tz-o.z),dur=Math.max(0.2,w.dur||2);o.vx=(o.tx-o.x)/dur;o.vz=(o.tz-o.z)/dur;o.moving=d>0.05;o.left=dur;}
+    if(b.remove)for(const id of[].concat(b.remove))removeActor(id);
+    if(b.shot){
+      const s=b.shot;cam.p0=W(s.at);cam.l0=W(s.look);cam.p1=s.to?W(s.to):cam.p0;cam.l1=s.lookTo?W(s.lookTo):cam.l0;cam.t=0;cam.dur=Math.max(0.01,s.dur||4);cam.f0=cam.fov;cam.f1=s.fov||cam.fov;
+      if(s.cut){cam.f0=cam.f1;}
+    }
+    if(b.fade!==undefined)st.fadeTo=b.fade;
+    if(b.title){eTitle.innerHTML='<b>'+b.title+'</b>'+(b.sub?'<span>'+b.sub+'</span>':'');eTitle.style.display='flex';eTitle.style.opacity='1';}
+    else if(eTitle.style.display!=='none'){eTitle.style.opacity='0';st.titleOff=0.6;}
+    if(b.say){const p=api.people[b.say];eWho.textContent=p?p.name:b.say;eWho.style.color=p?p.col:'#fff';portrait(b.say);eTx.textContent='';eBox.style.display='flex';}
+    else eBox.style.display='none';
+    if(b.fn)b.fn();
+  }
+  function nextBeat(){
+    st.bi++;
+    if(st.bi>=st.beats.length){finish(false);return;}
+    startBeat(st.beats[st.bi]);
+  }
+  function finish(skipped){
+    if(!st)return;
+    if(skipped){for(let i=st.bi+1;i<st.beats.length;i++){const b=st.beats[i];if(b.fn)b.fn();}}
+    const done=st.onDone;st=null;
+    for(const id of Object.keys(actors))removeActor(id);
+    eBox.style.display='none';eTitle.style.display='none';eFade.style.opacity='0';
+    root.classList.remove('cut');api.active=false;
+    if(done)done();
+  }
+  /** play(script, onDone, anchor): script is a list of beats; anchor is {x,z,th} that all relative positions use */
+  api.play=function(script,onDone,anchor){
+    if(st)finish(true);
+    const a=anchor||{x:player.x,z:player.z,th:player.th};
+    st={beats:script,bi:-1,beat:null,bt:0,typed:0,fadeTo:0,titleOff:0,onDone,anchor:{x:a.x,z:a.z,th:a.th,y:hillH(a.x,a.z)}};
+    api.active=true;root.classList.add('cut');eFade.style.opacity='0';
+    cam.t=1;cam.fov=camera.fov||55;
+    nextBeat();
+  };
+  api.skip=function(){if(st)finish(true);};
+  function advance(){
+    if(!st||!st.beat||!st.beat.say)return;
+    const len=st.beat.text.length;
+    if(st.typed<len)st.typed=len;else nextBeat();
+  }
+  api.advance=advance;
+  api.frame=function(raw){
+    if(!st)return;
+    const b=st.beat,dt=Math.min(raw,0.1);st.bt+=dt;
+    // camera
+    if(cam.t<1){cam.t=Math.min(1,cam.t+dt/cam.dur);}
+    const u=sm(cam.t);cam.p=lp(cam.p0,cam.p1,u);cam.l=lp(cam.l0,cam.l1,u);cam.fov=cam.f0+(cam.f1-cam.f0)*u;
+    // actors
+    for(const id in actors){
+      const o=actors[id];let sp=0;
+      if(o.moving){o.left-=dt;o.x+=o.vx*dt;o.z+=o.vz*dt;sp=Math.hypot(o.vx,o.vz);o.th=o.th+wrap(Math.atan2(o.vx,o.vz)-o.th)*(1-Math.exp(-8*dt));if(o.left<=0){o.moving=false;o.x=o.tx;o.z=o.tz;}}
+      o.av.group.position.set(o.x,hillH(o.x,o.z),o.z);o.av.group.rotation.y=o.th;AVT.anim(o.av,sp,dt);
+    }
+    // fade and title card
+    const fo=parseFloat(eFade.style.opacity||'0');eFade.style.opacity=(fo+(st.fadeTo-fo)*Math.min(1,dt*5)).toFixed(3);
+    if(st.titleOff>0){st.titleOff-=dt;if(st.titleOff<=0)eTitle.style.display='none';}
+    // beat progress
+    if(b.say){
+      const len=b.text.length;st.typed=Math.min(len,st.typed+dt*58);
+      eTx.textContent=b.text.slice(0,Math.floor(st.typed));
+      eNx.style.visibility=st.typed>=len?'visible':'hidden';
+      if(b.auto&&st.typed>=len&&st.bt>len/58+b.auto)nextBeat();
+    }else{
+      const need=b.wait!==undefined?b.wait:(b.title?(b.dur||3):(b.shot&&!b.say?0:0));
+      if(st.bt>=need)nextBeat();
+    }
+  };
+  api.camera=function(){
+    camera.position.set(cam.p[0],cam.p[1],cam.p[2]);camera.lookAt(cam.l[0],cam.l[1],cam.l[2]);
+    if(Math.abs(camera.fov-cam.fov)>0.05){camera.fov=cam.fov;camera.updateProjectionMatrix();}
+  };
+  eBox.addEventListener('click',advance);
+  addEventListener('keydown',e=>{
+    if(!st)return;
+    if(e.code==='Enter'||e.code==='Space'||e.code==='KeyE'){e.preventDefault();advance();}
+    else if(e.code==='Escape'){e.preventDefault();api.skip();}
+  });
+  return api;
+})();
+
+/* ================= STORY MODE: characters, chapters, blue-circle objectives ================= */
+const STORY=(()=>{
+  const api={};
+  const KEY='redline-story';
+  let SV={};try{SV=JSON.parse(localStorage.getItem(KEY)||'{}')||{};}catch(e){SV={};}
+  const saveSV=()=>{try{localStorage.setItem(KEY,JSON.stringify(SV));}catch(e){}};
+  const doneOf=id=>(SV[id]&&SV[id].done)|0;
+  const ASH_LOOK={skin:2,hs:1,hc:5,sh:6,pa:1,hat:0,eye:0};
+  const PEOPLE=CUT.people;
+  Object.assign(PEOPLE,{
+    ash:{name:'ASH',col:'#e8c07a',look:ASH_LOOK},
+    dunn:{name:'DET. DUNN',col:'#ff7b8f',look:{skin:1,hs:1,hc:1,sh:1,pa:3,hat:0,eye:1}},
+    marta:{name:'MARTA',col:'#8ee0b0',look:{skin:3,hs:3,hc:5,sh:0,pa:5,hat:0,eye:0}},
+    kessler:{name:'KESSLER',col:'#9ec8ff',look:{skin:1,hs:0,hc:5,sh:3,pa:4,hat:1,eye:0}},
+    vee:{name:'VEE',col:'#ffc07a',look:{skin:4,hs:3,hc:0,sh:8,pa:1,hat:2,eye:0}},
+    dispatch:{name:'DISPATCH',col:'#9dffb0',look:null}});
+  const TAUNT_LOOK={driver:{skin:1,hs:1,hc:3,sh:3,pa:5,hat:0,eye:1},wheels:{skin:0,hs:0,hc:5,sh:0,pa:2,hat:0,eye:0}};
+  const CHARS=[
+    {id:'ash',name:'Jonah "Ash" Calloway',title:'Cold Ledger',tag:'Six years inside for a job that went wrong. A friend with a badge sold him out. Now he wants the ledger that proves it.',look:ASH_LOOK,chapters:[]},
+    {id:'driver',name:'The Getaway Driver',title:'Neon Nights',tag:'An 80s sunset crime story: arrive with nothing, end up running the city.',look:TAUNT_LOOK.driver,chapters:[],soon:true},
+    {id:'wheels',name:'Eddie "Wheels" Marlowe',title:'Last Lap',tag:'A retired legend, a car wash, and a nephew who stole the wrong cars.',look:TAUNT_LOOK.wheels,chapters:[],soon:true}];
+  const BULWARK=()=>Object.assign({},CARS[2],{color:0x2b2e36,name:'Bulwark V8'});
+  const g=(i,j)=>[rc(i),rc(j)];
+  const PAL=[0x8a8f99,0x6a2a2a,0x2a4a6a,0x9a8a5a,0x3a5a4a];
+  let pending=null,st=null,objEl=null,ringG=null;
+
+  /* ----- circle visuals ----- */
+  function makeCircle(x,z,r){
+    const grp=new THREE.Group(),y=hillH(x,z)+0.18;
+    const ring=new THREE.Mesh(new THREE.RingGeometry(r-0.9,r,56),new THREE.MeshBasicMaterial({color:0x3aa0ff,transparent:true,opacity:0.95,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));
+    const fill=new THREE.Mesh(new THREE.CircleGeometry(r-0.9,44),new THREE.MeshBasicMaterial({color:0x1d6fe0,transparent:true,opacity:0.22,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));
+    ring.rotation.x=fill.rotation.x=-PI/2;ring.position.y=y;fill.position.y=y+0.02;
+    const beam=new THREE.Mesh(new THREE.CylinderGeometry(r*0.55,r*0.55,90,16,1,true),new THREE.MeshBasicMaterial({color:0x3aa0ff,transparent:true,opacity:0.16,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));
+    beam.position.y=y+45;beam.frustumCulled=false;
+    grp.add(ring,fill,beam);grp.position.set(x,0,z);scene.add(grp);
+    return{grp,ring,fill,beam,x,z,r};
+  }
+  const killCircle=c=>{if(c&&c.grp)scene.remove(c.grp);};
+
+  /* ----- scenes ----- */
+  const cutPlay=(script,cb,anchor)=>CUT.play(script,cb,anchor);
+  const cur=()=>st&&st.ch.steps[st.idx];
+  function clearCops(){
+    for(let i=cars.length-1;i>=1;i--){const c=cars[i];if(c.kind!=='traffic'&&c.kind!=='parked'&&c.ai)removeCar(c);}
+    FOOT.clearCops();G.heli=null;
+  }
+  function parkCars(base,n){
+    const fx=Math.sin(base.th),fz=Math.cos(base.th),lx=Math.cos(base.th),lz=-Math.sin(base.th);
+    for(let k=0;k<n;k++){
+      const d=TRAFFIC_DEFS[[0,1,4,7][k%4]],def=Object.assign({},d,{traffic:false,name:'Sedan',nitro:1,tag:'',color:PAL[k%PAL.length]}),c=makeCar(def,false);
+      const f=14+k*9,side=(k%2?-1:1)*8.2;
+      c.x=base.x+fx*f+lx*side;c.z=base.z+fz*f+lz*side;c.th=base.th;c.kind='parked';c.vx=c.vz=0;c.empty=true;cars.push(c);
+    }
+  }
+  function startSpot(sp){
+    if(sp.safe!==undefined&&SAFEHOUSES.length){const h=SAFEHOUSES[sp.safe%SAFEHOUSES.length];const th=[PI,-PI/2,0,PI/2][h.o||0];   // face out of the bay
+      return{x:h.x-Math.sin(th)*1.5,z:h.z-Math.cos(th)*1.5,th};}
+    if(sp.safe!==undefined)sp={i:7,j:7,th:0};
+    const th=sp.th,fx=Math.sin(th),fz=Math.cos(th),lx=Math.cos(th),lz=-Math.sin(th),c=g(sp.i,sp.j);
+    return{x:c[0]-fx*(sp.back||46)-lx*(sp.lat||5),z:c[1]-fz*(sp.back||46)-lz*(sp.lat||5),th};
+  }
+
+  /* ----- chapter definitions ----- */
+  CHARS[0].chapters=[
+    {title:'Parole',summary:'Your first night out. Find a car, shake the cop on your tail, and disappear.',
+     start:{i:3,j:10,th:PI/2},foot:true,
+     setup(){parkCars({x:player.x,z:player.z,th:player.th},4);},
+     steps:[
+      {t:'cut',script:()=>[
+        {title:'COLD LEDGER',sub:'Chapter 1  \u00b7  Parole',dur:3.4,shot:{at:[16,10,-18],look:[0,1.2,6],to:[10,5,-14],lookTo:[0,1.4,5],dur:7}},
+        {say:'ash',text:'Six years inside, and the rain still tastes exactly the same.',shot:{at:[14,7,-14],look:[0,1.3,4],to:[9,4,-11],lookTo:[0,1.4,3],dur:6}},
+        {say:'ash',text:'They gave me a bus token and a curfew. I would rather have my car back.',shot:{at:[3.2,1.9,4.4],look:[0,1.55,0],to:[2.4,1.7,3.4],lookTo:[0,1.55,0],dur:6,fov:48}},
+        {say:'ash',text:'Dunn has my name in a drawer and my brother\'s badge on his wall.'},
+        {say:'ash',text:'First I need wheels. Then I need a way to Marta\'s before sunrise.'}]},
+      {t:'obj',text:'Steal a car: walk up to one and press F',until:()=>!G.foot&&st.gotCar},
+      {t:'cut',script:()=>[
+        {shot:{at:[7,3.2,-9],look:[0,1,0],to:[5,2.4,-7],lookTo:[0,1.1,0],dur:6,fov:52},wait:0.6},
+        {say:'dispatch',text:'All units, parolee Calloway just took a vehicle near Fifth and Main.'},
+        {say:'dunn',text:'Welcome home, Jonah. Try not to make this hard on yourself.'},
+        {say:'ash',text:'Hard is the only way I know.'}]},
+      {t:'heat',level:1,cops:2},
+      {t:'circle',at:()=>g(8,10),r:9,text:'Drive to Marta\'s Pawn Shop and stop in the circle',need:'car',label:'Marta\'s Pawn'},
+      {t:'cut',script:()=>[
+        {shot:{at:[8,2.6,-9],look:[0,1.2,0],to:[6,2.2,-7],lookTo:[0,1.2,1],dur:6,fov:50},wait:0.4},
+        {say:'ash',text:'Marta\'s. Lights are on, which means she is expecting company.'},
+        {say:'dunn',text:'You can run or you can talk, Jonah. Either way, I am close.'},
+        {say:'ash',text:'Not close enough.'}]},
+      {t:'escape',text:'Lose Dunn\'s unit'},
+      {t:'circle',at:()=>g(8,4),r:9,text:'Reach the Rook Motel and stop in the circle',need:'car',label:'Rook Motel'},
+      {t:'cut',script:()=>[
+        {shot:{at:[7,3,-8],look:[0,1.2,0],to:[4,2,-6],lookTo:[0,1.2,0],dur:6,fov:50},wait:0.4},
+        {say:'ash',text:'Room nine. Cash only, no questions. Just how I like it.'},
+        {say:'ash',text:'Tomorrow I find out who is still loyal.'}]},
+      {t:'end'}]},
+    {title:'The Fence',summary:'Marta can get you a clean car, if you can reach the scrapyard without Dunn.',
+     start:{i:8,j:10,th:0},car:'stolen',
+     steps:[
+      {t:'cut',script:()=>[
+        {title:'COLD LEDGER',sub:'Chapter 2  \u00b7  The Fence',dur:3,shot:{at:[10,6,-14],look:[0,1.2,3],to:[7,3.6,-10],lookTo:[0,1.3,3],dur:6}},
+        {actors:[{id:'marta',look:PEOPLE.marta.look,at:[4.4,3.2],face:-110}],shot:{at:[-3,1.8,-7],look:[3,1.4,3],to:[-1.5,1.7,-5],lookTo:[3.4,1.5,3],dur:6,fov:48},wait:0.5},
+        {say:'marta',text:'Look what the rain dragged in. You look older, Jonah.'},
+        {say:'ash',text:'Six years will do that. I need a clean car, Marta.'},
+        {say:'marta',text:'Your old Bulwark is under a tarp at Kessler\'s scrapyard. I paid a yard hand to forget he saw it.'},
+        {say:'marta',text:'Dunn has had a man on my door since the day you were sentenced. Keep to the side streets.'}]},
+      {t:'circle',at:()=>g(2,6),r:9,text:'Drive to Kessler\'s Scrapyard and stop in the circle',need:'car',label:'Kessler\'s Scrapyard'},
+      {t:'cut',script:()=>[
+        {actors:[{id:'kessler',look:PEOPLE.kessler.look,at:[4.6,3.8],face:-120}],shot:{at:[-4,1.9,-6],look:[3,1.5,3.6],to:[-2.4,1.8,-4.4],lookTo:[3.6,1.5,3.8],dur:6,fov:48},wait:0.5},
+        {say:'kessler',text:'She has been sleeping under that tarp for six years. Still starts on the first turn.'},
+        {say:'ash',text:'Then she is the only thing that waited for me.'},
+        {wait:0.6,fade:1},
+        {fn:()=>FOOT.giveCar(BULWARK()),remove:['kessler'],wait:0.3},
+        {fade:0,wait:0.6,shot:{at:[8,2.2,-8],look:[0,1.0,0],to:[5,1.8,-6],lookTo:[0,1.0,0],dur:6,fov:50}},
+        {say:'dispatch',text:'Units converging on Kessler\'s yard. Detective Dunn is on site.'},
+        {say:'dunn',text:'Come on out, Jonah. I only want to talk.'},
+        {say:'ash',text:'He always only wants to talk.'}]},
+      {t:'heat',level:2,cops:3},
+      {t:'escape',text:'Lose Dunn\'s squad'},
+      {t:'circle',at:()=>{const h=SAFEHOUSES[0];return h?[h.x,h.z]:g(7,7);},r:5.5,text:'Hole up in the safe-house garage and stop in the circle',need:'car',label:'Safe house'},
+      {t:'cut',script:()=>[
+        {shot:{at:[6,2.4,-7],look:[0,1,0],to:[4,1.8,-5],lookTo:[0,1,0],dur:6,fov:50},wait:0.4},
+        {say:'ash',text:'A garage that is not on any map. Marta\'s people built this place.'},
+        {say:'ash',text:'Nobody in here owes me a thing. I might need to change that.'}]},
+      {t:'end'}]},
+    {title:'The Survivor',summary:'Vee is the last of the crew. Get her across town before Dunn closes in.',
+     start:{safe:0},car:'bulwark',
+     steps:[
+      {t:'cut',script:()=>[
+        {title:'COLD LEDGER',sub:'Chapter 3  \u00b7  The Survivor',dur:3,shot:{at:[9,5,-13],look:[0,1.1,3],to:[6,3,-9],lookTo:[0,1.2,3],dur:6}},
+        {actors:[{id:'vee',look:PEOPLE.vee.look,at:[3.6,3.6],face:-120}],shot:{at:[-3.4,1.9,-5.2],look:[2.6,1.5,3.2],to:[-1.8,1.8,-4.2],lookTo:[3,1.5,3.4],dur:6,fov:48},wait:0.5},
+        {say:'vee',text:'Jonah? They told me you took the fall alone.'},
+        {say:'ash',text:'I did. Why are you hiding in a garage in the rain?'},
+        {say:'vee',text:'Because somebody sold us, and whoever it was is still out there. Dunn moves on this place tonight.'},
+        {say:'vee',text:'I have a key. Locker 114, Central Precinct. You get me across town and it is yours.'},
+        {say:'ash',text:'Get in.'},
+        {remove:['vee'],wait:0.2}]},
+      {t:'heat',level:3,cops:4},
+      {t:'circle',at:()=>g(11,3),r:9,text:'Get Vee to the exfil point and stop in the circle',need:'car',label:'Exfil point',limit:170},
+      {t:'cut',script:()=>[
+        {actors:[{id:'vee',look:PEOPLE.vee.look,at:[3.6,2.2],face:-120}],shot:{at:[-4.4,1.9,-5.8],look:[2.6,1.5,2.4],to:[-2.4,1.8,-4],lookTo:[3,1.5,2.6],dur:6,fov:48},wait:0.5},
+        {say:'vee',text:'This is where I get off. Take the key.'},
+        {say:'vee',text:'The man who sold us out was never on the street. Dunn calls him the clerk. His name is in the ledger.'},
+        {say:'ash',text:'Then I will go and read it.'},
+        {say:'vee',text:'Be careful. Everyone in that ledger has a price. Dunn only keeps the ones that sell.'},
+        {wait:0.5,fade:1},
+        {remove:['vee'],wait:0.2},
+        {fade:0,wait:0.6},
+        {say:'ash',text:'Everyone I trusted had a price. Time to find out how much.'}]},
+      {t:'end'}]}];
+
+  /* ----- runner ----- */
+  const isCar=()=>!G.foot;
+  function nextStep(){
+    if(!st)return;
+    if(st.circle){killCircle(st.circle);st.circle=null;}
+    st.idx++;const s=cur();
+    if(!s){complete();return;}
+    st.t=0;st.stepT=0;
+    if(s.t==='cut'){cutPlay(s.script(),()=>{nextStep();});}
+    else if(s.t==='circle'){const a=s.at();st.circle=makeCircle(a[0],a[1],s.r);st.hold=0;st.left=s.limit||0;toast('Objective: '+s.text,'blue');}
+    else if(s.t==='obj'){toast('Objective: '+s.text,'blue');}
+    else if(s.t==='heat'){
+      st.calm=false;G.engaged=true;G.heat=Math.max(G.heat,s.level);G.bounty=Math.max(G.bounty,HEAT_AT[s.level-1]||0);G.coolNeed=45+8*G.heat;G.cool=0;
+      for(let k=0;k<s.cops;k++)spawnCop(pickKind(),true);
+      toast('Cops on your tail','red');nextStep();
+    }
+    else if(s.t==='escape'){st.calm=false;G.engaged=true;G.cool=0;toast('Objective: '+s.text,'blue');}
+    else if(s.t==='end'){complete();}
+    else if(s.t==='wait'){}
+  }
+  function complete(){
+    if(!st||st.done)return;
+    st.done=true;
+    const d=Math.max(doneOf(st.char.id),st.n+1);SV[st.char.id]={done:d};saveSV();
+    endRun('escaped');
+  }
+  function fail(text){if(!st||st.done)return;st.failText=text;endRun('busted');}
+
+  /* ----- hooks the game calls ----- */
+  api.active=()=>!!st;
+  api.calm=()=>!!(st&&st.calm);
+  api.place=function(){
+    if(!pending)return false;
+    const ch=CHARS.find(c=>c.id===pending.id).chapters[pending.n],sp=startSpot(ch.start),P=player;
+    P.x=sp.x;P.z=sp.z;P.th=sp.th;P.vx=Math.sin(sp.th)*2;P.vz=Math.cos(sp.th)*2;P.spin=0;P.steer=0;
+    return true;
+  };
+  api.begin=function(){
+    if(!pending){st=null;X.setLook(null);return;}
+    const char=CHARS.find(c=>c.id===pending.id),ch=char.chapters[pending.n],n=pending.n;pending=null;
+    st={char,ch,n,idx:-1,calm:true,gotCar:false,done:false,failText:'',circle:null,hold:0,left:0,stepT:0};
+    clearCops();G.heat=1;G.bounty=0;G.cool=0;G.engaged=false;G.spotted=false;G.spotT=0;
+    X.setLook(char.look);
+    if(MODE!=='night')setTheme('night');
+    X.setWeather('rain',true);
+    if(ch.car==='bulwark'||ch.car==='stolen')FOOT.giveCar(ch.car==='bulwark'?BULWARK():Object.assign({},TRAFFIC_DEFS[0],{traffic:false,name:'Stolen coupe',nitro:1,tag:'Stolen',color:0x6a6f78,hp:60}));
+    if(ch.foot)FOOT.beginFoot();
+    if(ch.setup)ch.setup();
+    nextStep();
+  };
+  api.event=function(name){if(st&&name==='car')st.gotCar=true;};
+  api.escape=function(){   // the base game wants to end the run because you lost the cops; in story mode that only matters on an escape step
+    if(!st)return false;
+    const s=cur();G.cool=0;
+    if(s&&s.t==='escape'){clearCops();G.heat=1;G.bounty=0;G.engaged=false;st.calm=true;toast('You lost them','good');sfxBeep(880,0.2);nextStep();}
+    return true;
+  };
+  api.update=function(dt){
+    if(!st||G.mode!=='playing'||CUT.active||st.done)return;
+    const s=cur();if(!s)return;st.stepT+=dt;
+    if(s.t==='obj'&&s.until()){nextStep();return;}
+    if(s.t==='circle'&&st.circle){
+      const c=st.circle,P=player,d=Math.hypot(P.x-c.x,P.z-c.z),mph=P.speed*2.237,inside=d<c.r-1;
+      const ok=inside&&(s.need==='foot'?!!G.foot:(s.need==='any'?true:!G.foot))&&P.speed<2.24;
+      st.hold=ok?Math.min(1,st.hold+dt/0.9):Math.max(0,st.hold-dt*2);
+      st.inside=inside;st.mph=mph;st.dist=d;
+      if(st.left>0){st.left-=dt;if(st.left<=0){fail('You ran out of time.');return;}}
+      if(st.hold>=1){sfxBeep(990,0.2);nextStep();}
+    }
+  };
+  api.frame=function(raw){
+    if(st&&st.circle){
+      const c=st.circle,t=G.clock;c.ring.material.opacity=0.7+0.25*Math.sin(t*4);c.beam.material.opacity=0.12+0.06*Math.sin(t*3);
+      const k=st.hold||0;c.ring.material.color.setRGB(0.23+0.77*k,0.63+0.37*k,1);c.fill.material.opacity=0.2+0.3*k;
+    }
+    // objective panel
+    if(!objEl){objEl=document.createElement('div');objEl.id='xobj';document.body.appendChild(objEl);}
+    if(!st||G.mode!=='playing'||CUT.active||st.done){objEl.style.display='none';return;}
+    const s=cur();if(!s){objEl.style.display='none';return;}
+    let line='',bar=-1,sub='';
+    if(s.t==='obj'||s.t==='escape')line=s.text;
+    else if(s.t==='circle'){
+      line=s.text;
+      if(st.inside&&st.mph>=5)sub='Slow down to under 5 mph  (now '+Math.round(st.mph)+')';
+      else if(st.inside)sub='Hold still';
+      else sub=Math.round(st.dist||0)+' m';
+      bar=st.hold||0;
+      if(st.left>0)sub+='   \u00b7   '+Math.ceil(st.left)+' s left';
+    }
+    else{objEl.style.display='none';return;}
+    objEl.style.display='block';
+    const html='<small>'+esc2(st.ch.title)+'  \u00b7  Chapter '+(st.n+1)+'</small><b>'+esc2(line)+'</b>'+(sub?'<em>'+sub+'</em>':'')+(bar>=0?'<i><u style="width:'+(bar*100).toFixed(0)+'%"></u></i>':'');
+    if(objEl._h!==html){objEl._h=html;objEl.innerHTML=html;}
+  };
+  const esc2=t=>String(t).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  api.afterEnd=function(res){
+    if(!st)return;
+    const t=$('endTitle'),sub=$('endSub');
+    if(st.done){
+      const last=st.n+1>=st.char.chapters.length;
+      t.textContent='Chapter complete';sub.textContent=st.ch.title+(last?'. More chapters are coming.':'. Next: '+st.char.chapters[st.n+1].title+'.');
+      if(!last)pending={id:st.char.id,n:st.n+1};
+      setText($('again'),last?'Free pursuit':'Next chapter');
+    }else{
+      t.textContent='Chapter failed';
+      sub.textContent=st.failText||(res==='busted'?'The cops caught you. Try the chapter again.':'Your car was wrecked. Try the chapter again.');
+      pending={id:st.char.id,n:st.n};
+      setText($('again'),'Retry chapter');
+    }
+    if(st.circle){killCircle(st.circle);st.circle=null;}
+    st=null;
+  };
+  api.reset=function(){
+    pending=null;if(st&&st.circle)killCircle(st.circle);st=null;
+    if(CUT.active)CUT.skip();
+    X.setLook(null);
+  };
+  api.hasPending=()=>!!pending;
+
+  /* ----- maps ----- */
+  api.mini=function(mp,dot,cx,cy,R){
+    if(!st||!st.circle)return;
+    const c=st.circle,q=mp(c.x,c.z),dx=q[0]-cx,dy=q[1]-cy,d=Math.hypot(dx,dy);
+    if(d<R-8){mctx.strokeStyle='#4aa8ff';mctx.fillStyle='rgba(60,150,255,.35)';mctx.lineWidth=2;mctx.beginPath();mctx.arc(q[0],q[1],Math.max(5,c.r*0.5),0,TAU);mctx.fill();mctx.stroke();}
+    else{const a=Math.atan2(dy,dx),px=cx+Math.cos(a)*(R-10),py=cy+Math.sin(a)*(R-10);
+      mctx.save();mctx.translate(px,py);mctx.rotate(a);mctx.fillStyle='#4aa8ff';mctx.strokeStyle='#06223f';mctx.lineWidth=2;mctx.beginPath();mctx.moveTo(8,0);mctx.lineTo(-5,6);mctx.lineTo(-5,-6);mctx.closePath();mctx.fill();mctx.stroke();mctx.restore();
+      mctx.font='700 10px system-ui,sans-serif';mctx.textAlign='center';mctx.lineWidth=3;mctx.strokeStyle='rgba(0,0,0,.85)';
+      const tx=cx+Math.cos(a)*(R-27),ty=cy+Math.sin(a)*(R-27)+3,t=Math.round(st.dist||Math.hypot(c.x-player.x,c.z-player.z))+' m';mctx.strokeText(t,tx,ty);mctx.fillStyle='#9fd0ff';mctx.fillText(t,tx,ty);}
+  };
+  api.mapLayer=function(ctx,w2s,k){
+    if(!st||!st.circle)return;
+    const c=st.circle,q=w2s(c.x,c.z),r=Math.max(7,c.r*k);
+    ctx.fillStyle='rgba(60,150,255,.35)';ctx.strokeStyle='#4aa8ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(q[0],q[1],r,0,TAU);ctx.fill();ctx.stroke();
+    const s=cur();if(s&&s.label){ctx.font='700 12px system-ui,sans-serif';ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.85)';ctx.strokeText(s.label,q[0],q[1]-r-6);ctx.fillStyle='#bfe0ff';ctx.fillText(s.label,q[0],q[1]-r-6);}
+  };
+
+  /* ----- story menu ----- */
+  const css=document.createElement('style');
+  css.textContent=`
+  #xobj{display:none;position:fixed;left:14px;top:calc(env(safe-area-inset-top,0px) + 196px);width:min(280px,60vw);pointer-events:none;background:rgba(8,12,22,.78);border-left:3px solid #4aa8ff;padding:7px 10px;text-shadow:0 1px 5px #000;z-index:4}
+  #xobj small{display:block;font-size:10.5px;letter-spacing:.14em;color:#8fb8e8;text-transform:uppercase}
+  #xobj b{display:block;font-size:14px;line-height:1.35;margin-top:2px}#xobj em{display:block;font-style:normal;font-size:12.5px;color:#9fd0ff;margin-top:3px}
+  #xobj i{display:block;height:5px;background:rgba(255,255,255,.16);margin-top:6px}#xobj u{display:block;height:100%;background:#4aa8ff}
+  @media (max-width:640px){#xobj{top:calc(env(safe-area-inset-top,0px) + 250px)}}
+  #storyPanel{position:fixed;inset:0;z-index:8;display:none;align-items:center;justify-content:center;background:rgba(5,6,10,.8);backdrop-filter:blur(3px)}
+  #storyPanel.on{display:flex}
+  #storyPanel canvas{flex:none;width:84px;height:100px;background:#10131c;border:1px solid var(--line)}
+  .stcard{display:flex;gap:12px;padding:10px;border:1px solid var(--line);background:rgba(255,255,255,.03)}
+  .stcard h4{margin:0;font-size:17px;font-style:italic}.stcard small{display:block;color:var(--dim);font-size:12.5px;line-height:1.45;margin-top:3px}
+  .stch{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:6px;font-size:13.5px}
+  .stch button{padding:5px 12px;font-size:13px;min-height:0}.stch span.ok{color:#7dff9a}.stch span.lk{color:var(--dim)}
+  `;
+  document.head.appendChild(css);
+  const eP=document.createElement('div');eP.id='storyPanel';document.body.appendChild(eP);
+  function panel(){
+    eP.innerHTML='<div class="xg-card"><div class="xg-top"><b>Story mode</b><span>Pick a character and play their story</span><button class="ghost qual" data-s="close" style="margin-left:auto">Close</button></div><div class="xg-body">'+
+      CHARS.map(c=>{
+        const d=doneOf(c.id);
+        let body='<small>'+esc2(c.tag)+'</small>';
+        if(c.soon)body+='<div class="stch"><span class="lk">Chapters coming soon</span></div>';
+        else body+=c.chapters.map((ch,i)=>{const open=i<=d,done=i<d;return '<div class="stch"><span>'+(i+1)+'.  '+esc2(ch.title)+(done?'  <span class="ok">\u2713</span>':'')+'</span>'+(open?'<button class="ghost qual" data-s="play" data-c="'+c.id+'" data-n="'+i+'">'+(done?'Replay':'Play')+'</button>':'<span class="lk">Locked</span>')+'</div>';}).join('');
+        return '<div class="stcard"><canvas data-look="'+c.id+'" width="84" height="100"></canvas><div style="flex:1"><h4>'+esc2(c.title)+'</h4><small style="color:var(--ink)">'+esc2(c.name)+'</small>'+body+'</div></div>';}).join('')+
+      '<div class="xg-note">Story chapters are single-player. Your progress is saved on this device.</div><button class="ghost qual" data-s="reset" style="align-self:flex-start">Reset story progress</button></div></div>';
+    for(const cv of eP.querySelectorAll('canvas[data-look]')){
+      const ch=CHARS.find(c=>c.id===cv.dataset.look),c2=cv.getContext('2d'),off=document.createElement('canvas');off.width=150;off.height=240;
+      AVT.draw2D(off.getContext('2d'),150,240,ch.look);c2.fillStyle='#10131c';c2.fillRect(0,0,84,100);c2.drawImage(off,32,0,86,104,0,0,84,100);
+    }
+  }
+  api.open=function(){if(G.mode!=='menu')return;panel();eP.classList.add('on');};
+  api.close=function(){eP.classList.remove('on');};
+  api.start=function(id,n){
+    const ch=CHARS.find(c=>c.id===id);if(!ch||!ch.chapters[n])return;
+    if(MP.on){toast('Leave the multiplayer server to play story mode','red');return;}
+    if(n>doneOf(id))return;
+    pending={id,n};api.close();startPursuit();
+  };
+  eP.addEventListener('click',e=>{
+    if(e.target===eP){api.close();return;}
+    const b=e.target.closest('[data-s]');if(!b)return;audioInit();
+    const a=b.dataset.s;
+    if(a==='close')api.close();
+    else if(a==='play')api.start(b.dataset.c,+b.dataset.n);
+    else if(a==='reset'){SV={};saveSV();panel();}
+  });
+  {const go=$('go'),b=document.createElement('button');b.className='ghost qual';b.id='btnStory';b.style.width='100%';b.textContent='Story mode';
+    b.onclick=()=>{audioInit();api.open();};go.parentNode.insertBefore(b,go.nextSibling);}
+  addEventListener('keydown',e=>{if(e.code==='Escape'&&eP.classList.contains('on'))api.close();});
   return api;
 })();
 
@@ -4401,7 +4895,7 @@ const WM=(()=>{
     ctx.font='600 12px system-ui,sans-serif';ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.85)';
     for(const t of TOWNS){if(t.village&&zoom<4)continue;const q=w2s(t.x,t.z);if(q[0]<-60||q[1]<-20||q[0]>W+60||q[1]>H+20)continue;ctx.fillText(t.village?'Village':t.style.charAt(0).toUpperCase()+t.style.slice(1)+' town',q[0],q[1]-t.r*k*0.75-6);}
     if(zoom>=2){const q=w2s(0,-HALF-24);ctx.fillText('City',q[0],q[1]);}
-    X.mapLayer(ctx,w2s,k);MP.mapLayer(ctx,w2s,k);
+    X.mapLayer(ctx,w2s,k);MP.mapLayer(ctx,w2s,k);STORY.mapLayer(ctx,w2s,k);
     for(const c of cars){if(c===player||c.dead||c.kind==='traffic'||c.kind==='parked')continue;const q=w2s(c.x,c.z);ctx.fillStyle=(c.kind==='tank'||c.kind==='bomber')?'#ff9a2f':'#ff3358';ctx.fillRect(q[0]-2.5,q[1]-2.5,5,5);}
     if(G.heli){const q=w2s(G.heli.x,G.heli.z);ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(q[0],q[1]-6);ctx.lineTo(q[0]+6,q[1]);ctx.lineTo(q[0],q[1]+6);ctx.lineTo(q[0]-6,q[1]);ctx.closePath();ctx.fill();}
     const q=w2s(player.x,player.z);
@@ -4411,7 +4905,7 @@ const WM=(()=>{
   const clampView=()=>{cx=clamp(cx,-WH,WH);cz=clamp(cz,-WH,WH);zoom=clamp(zoom,1,10);};
   api.toggle=function(){if(api.open)api.close();else api.show();};
   api.show=function(){
-    if(G.mode!=='playing')return;
+    if(G.mode!=='playing'||CUT.active)return;
     if(!base)buildBase();
     zoom=3;cx=player.x;cz=player.z;clampView();
     el.style.opacity=MP.on?0.9:1;el.classList.add('on');api.open=true;draw();
