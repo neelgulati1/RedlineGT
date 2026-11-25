@@ -28,7 +28,7 @@ H.roadTexture=(T,renderer,rx,ry,base)=>{
 };
 H.supports=s=>['coupe','sport','muscle','hatch','sedan','suv','pickup'].includes(s);
 const cache=new Map(),shared={};
-const interp=(pts,t)=>{for(let i=1;i<pts.length;i++)if(t<=pts[i][0]){const a=pts[i-1],b=pts[i],q=(t-a[0])/(b[0]-a[0]||1);return a[1]+(b[1]-a[1])*q;}return pts.at(-1)[1];};
+const interp=(pts,t)=>{for(let i=1;i<pts.length;i++)if(t<=pts[i][0]){const a=pts[i-1],b=pts[i],q=(t-a[0])/(b[0]-a[0]||1);return a[1]+(b[1]-a[1])*q;}return pts[pts.length-1][1];};
 function shell(T,rings,materials){
  const p=[],idx=[];for(const ring of rings)for(const v of ring)p.push(...v);const n=rings[0].length;
  const g=new T.BufferGeometry();let offset=0;
@@ -46,7 +46,7 @@ function bodyGeometry(T,def,prof){
  const lo=Math.max(suv?.40:.30,arch),top=Math.max(topAt(t),lo+.075),end=Math.pow(Math.abs(t)*2,6),flare=Math.exp(-Math.pow(wheelD/.5,2)),width=half*(.91+.065*flare-.105*end),shoulder=width*(muscle?.92:.88);
  return [[-width*.74,.31,z],[-width*.99,lo,z],[-width,Math.max(lo+.02,top-.17),z],[-shoulder,top-.045,z],[-width*.57,top,z],[0,top+.025,z],[width*.57,top,z],[shoulder,top-.045,z],[width,Math.max(lo+.02,top-.17),z],[width*.99,lo,z],[width*.74,.31,z]];});
  const body=shell(T,rings);
- const cp=prof.cab,back=cp[0][0],front=cp.at(-1)[0],r0=prof.roof[0],r1=prof.roof[1],rY=prof.roof[2],cw=W*prof.cabW*.48;
+ const cp=prof.cab,back=cp[0][0],front=cp[cp.length-1][0],r0=prof.roof[0],r1=prof.roof[1],rY=prof.roof[2],cw=W*prof.cabW*.48;
  const cabZ=[back,back+(r0-back)*.42,r0,r0+(r1-r0)*.45,r1,r1+(front-r1)*.48,front];
  const cabRings=cabZ.map((t,i)=>{const floor=topAt(t)-.035,top=i===0||i===6?floor+.025:i===1?floor+(rY-floor)*.50:i===5?floor+(rY-floor)*.56:rY,width=cw*(i===0||i===6?1:.85);return [[-cw,floor,t*L],[-width,top-.035,t*L],[-width*.74,top,t*L],[width*.74,top,t*L],[width,top-.035,t*L],[cw,floor,t*L]]});
  const cab=shell(T,cabRings,(i,j)=>i===2&&j>=2&&j<=3?1:0);
@@ -70,7 +70,7 @@ H.body=(T,inner,def,prof,paint,MAT)=>{
   const tail=box(T,inner,W*.27,.06,.045,shared.red,x,rear-.10,-half-.012);tail.rotation.z=side*.065;
   box(T,inner,W*.18,.035,.05,shared.red,x,rear-.17,-half-.015);
   box(T,inner,W*.16,.13,.035,shared.black,side*W*.32,front-.27,half-.008);
-  box(T,inner,.17,.10,.23,paint,side*W*.48,prof.cab.at(-1)[1]+.16,prof.cab.at(-1)[0]*L-.28);
+  box(T,inner,.17,.10,.23,paint,side*W*.48,prof.cab[prof.cab.length-1][1]+.16,prof.cab[prof.cab.length-1][0]*L-.28);
   box(T,inner,.045,.075,L*.34,shared.black,side*W*.465,.36,0);
   box(T,inner,.018,.027,.16,shared.chrome,side*W*.463,topAt(-.04)-.13,-L*.06);
   box(T,inner,.17,.07,.11,shared.chrome,side*W*.28,.37,-half-.025);

@@ -1,0 +1,3 @@
+# Hybrid startup recovery
+
+The preview now runs as a direct page instead of an iframe, starts after DOMContentLoaded rather than the full window load event, reports initialization stages and uncaught startup errors, retries the core Three.js download through a second free CDN, and falls back to legacy car and wheel geometry if optional upgrades throw. Compatibility mode: nextgen/?safe=1. Audio startup no longer gates boot dismissal. The original root index.html is unchanged. The exact original runtime failure is unconfirmed: no real browser with the required CDN libraries was available for testing. Inline and upgrade scripts were syntax-checked. The old loader.js is retained as historical reference and is no longer the active entry point.
