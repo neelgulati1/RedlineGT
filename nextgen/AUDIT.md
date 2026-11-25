@@ -1,0 +1,9 @@
+# Phase 1 source review and migration notes
+
+Baseline: main at 0c5eeb642947d853f3b890662cfd13a0f5fce57c, RedlineGT V0.6.2, one 1.23 MB index.html (~4,980 lines). Systems identified: Three.js r128 with bloom, procedural 4,800-unit world, custom vehicle physics and collisions, traffic/pedestrian navigation, police escalation, weather, audio, localStorage economy, PeerJS rooms, on-foot play and story/cutscenes. No separate build system or tests in baseline tree.
+
+Migration risks: shared global state and update order; physics/AI assumptions; collisions and surface continuity; save key compatibility; embedded media licensing; CDN availability; peer-host trust. Preserve the original entry point and migrate individual systems only after acceptance tests. This is a structural source review, not a comprehensive security or licensing audit.
+
+Phase 1 decisions: use native ES modules and WebGL 2 with no external dependencies for the first test range. Modern Three.js and Rapier remain candidates, not installed dependencies. A fixed-step planar bicycle model uses axle-level combined grip, longitudinal weight transfer, engine gears and handbrake. No rigid-body engine, independent suspension, reverse, full collision system, PBR, real shadows or finished car models yet. The test range is not the redesigned world. Automatic resolution scaling and diagnostics are present; target 30 FPS on low-end Chromebook is unverified. Desktop and multiplayer are deferred.
+
+Manual acceptance: serve nextgen/ with any static server; verify loading, W/A/S/D, braking, handbrake, reset, dusk, presets and diagnostics; test low-end Chromebook and desktop; record resolution, FPS, stutters and errors. Do not deploy or merge. Automated smoke tests: run npm test in nextgen/ (Node only, no dependencies or installation).
