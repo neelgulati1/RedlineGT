@@ -36,6 +36,9 @@ function patchLegacy(html,scriptURL){
  replace('Q.ema=Q.ema?Q.ema*0.96+raw*0.04:raw;','Q.ema=Q.ema?Q.ema*0.96+Math.min(realFrame,.25)*0.04:Math.min(realFrame,.25);RedlineHybrid.stats(realFrame,renderer,Q);');
  replace('if(fps<44&&sc>0.55)sc=Math.max(0.55,sc-0.12);else if(fps>57&&sc<1)sc=Math.min(1,sc+0.06);','if(fps<(Q.level===\'low\'?28:43)&&sc>0.45)sc=Math.max(0.45,sc-0.10);else if(fps>(Q.level===\'low\'?39:57)&&sc<1)sc=Math.min(1,sc+0.04);');
  replace("Q.level='low';Q.lowT=0;Q.scale=1;applyQuality();","Q.level='low';Q.lowT=0;Q.scale=Math.min(Q.scale||1,.72);applyQuality();");
+ replace("const BLDCOL=[[1.0,0.62,0.66],[0.55,0.82,1.0],[1.0,0.82,0.42],[0.62,0.88,0.66],[0.78,0.65,1.0],[1.0,0.72,0.5],[0.6,0.9,0.88],[1.0,0.92,0.6]];","const BLDCOL=[[.83,.79,.76],[.64,.73,.82],[.84,.79,.69],[.72,.77,.72],[.83,.79,.75],[.80,.80,.76]];");
+ replace("x.fillStyle=emissive?'#000':'#eef3fa'","x.fillStyle=emissive?'#000':'#a9afb2'");
+ replace("x.fillStyle=emissive?'#000':'#8fd6f2'","x.fillStyle=emissive?'#000':'#557080'");
  // Never overwrite the original game's saves.
  html=html.replace(/(['"])redline-(theme|bank|money|owned|cheat|vol|x|name|story)\1/g,(_,q,k)=>q+'redline-hybrid-'+k+q);
  return html;

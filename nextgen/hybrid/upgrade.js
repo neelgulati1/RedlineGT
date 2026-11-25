@@ -34,7 +34,7 @@ function shell(T,rings,materials){
  const g=new T.BufferGeometry();let offset=0;
  for(let j=0;j<rings.length-1;j++)for(let i=0;i<n;i++){const a=j*n+i,b=j*n+(i+1)%n,c=(j+1)*n+i,d=(j+1)*n+(i+1)%n;idx.push(a,c,d,a,d,b);if(materials)g.addGroup(offset,6,materials(i,j));offset+=6;}
  for(let i=1;i<n-1;i++){idx.push(0,i,i+1);if(materials)g.addGroup(offset,3,0);offset+=3;const b=(rings.length-1)*n;idx.push(b,b+i+1,b+i);if(materials)g.addGroup(offset,3,0);offset+=3;}
- g.setAttribute('position',new T.Float32BufferAttribute(p,3));g.setIndex(idx);g.computeVertexNormals();g.computeBoundingSphere();return g;
+ g.setAttribute('position',new T.Float32BufferAttribute(p,3));if(materials){const old=g.groups.slice(),ordered=[];g.clearGroups();for(const mat of [0,1]){const start=ordered.length;for(const q of old)if(q.materialIndex===mat)ordered.push(...idx.slice(q.start,q.start+q.count));if(ordered.length>start)g.addGroup(start,ordered.length-start,mat);}g.setIndex(ordered);}else g.setIndex(idx);g.computeVertexNormals();g.computeBoundingSphere();return g;
 }
 function add(T,parent,geo,mat,x=0,y=0,z=0){const m=new T.Mesh(geo,mat);m.position.set(x,y,z);parent.add(m);return m;}
 function bodyGeometry(T,def,prof){
@@ -52,6 +52,8 @@ function bodyGeometry(T,def,prof){
  const cab=shell(T,cabRings,(i,j)=>i===2&&j>=2&&j<=3?1:0);
  const result={body,cab,topAt};cache.set(key,result);return result;
 }
+// Merge static detail meshes by material.
+function merged(T,meshes){const positions=[],normals=[];for(const m of meshes){m.updateMatrix();const q=m.geometry.index?m.geometry.toNonIndexed():m.geometry.clone();q.applyMatrix4(m.matrix);const p=q.attributes.position.array,n=q.attributes.normal.array;for(let i=0;i<p.length;i++){positions.push(p[i]);normals.push(n[i]);}q.dispose();}const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(positions,3));g.setAttribute('normal',new T.Float32BufferAttribute(normals,3));g.computeBoundingSphere();return g;}
 function parts(T){if(shared.box)return;shared.box=new T.BoxGeometry(1,1,1);shared.black=new T.MeshStandardMaterial({color:0x15191e,roughness:.72,metalness:.2});shared.chrome=new T.MeshStandardMaterial({color:0x9ba0a6,roughness:.28,metalness:.85});shared.red=new T.MeshStandardMaterial({color:0x831821,emissive:0xff1321,emissiveIntensity:.48,roughness:.23});shared.white=new T.MeshStandardMaterial({color:0xe1e9ee,emissive:0xc8e8ff,emissiveIntensity:.52,roughness:.2});shared.rubber=new T.MeshStandardMaterial({color:0x151619,roughness:.88});shared.brake=new T.MeshStandardMaterial({color:0x9d342b,roughness:.4,metalness:.4});}
 function box(T,parent,w,h,d,mat,x,y,z){const m=add(T,parent,shared.box,mat,x,y,z);m.scale.set(w,h,d);return m;}
 H.body=(T,inner,def,prof,paint,MAT)=>{
@@ -59,7 +61,7 @@ H.body=(T,inner,def,prof,paint,MAT)=>{
  paint.roughness=.22;paint.metalness=.56;paint.envMapIntensity=.95;if('clearcoat'in paint){paint.clearcoat=1;paint.clearcoatRoughness=.12;}
  const m=add(T,inner,body,paint);m.castShadow=true;
  const glass=MAT.glass;glass.color.setHex(0x263642);glass.roughness=.15;glass.metalness=.55;glass.envMapIntensity=1.05;
- add(T,inner,cab,[glass,paint]);
+ add(T,inner,cab,[glass,paint]);const detailStart=inner.children.length;
  box(T,inner,W*.73,.08,L*.94,shared.black,0,.27,0);
  for(const side of [-1,1]){
   const x=side*W*.315;
@@ -77,11 +79,12 @@ H.body=(T,inner,def,prof,paint,MAT)=>{
  box(T,inner,W*.86,.045,.21,shared.black,0,.32,half-.11);
  box(T,inner,W*.78,.10,.18,shared.black,0,.32,-half+.07);
  if(def.shape==='sport'){const wing=box(T,inner,W*.88,.045,.32,paint,0,rear+.24,-half+.23);wing.rotation.x=-.08;for(const s of [-1,1])box(T,inner,.055,.22,.15,shared.black,s*W*.27,rear+.115,-half+.23);}
+ const groups=new Map();for(const m of inner.children.slice(detailStart)){if(!groups.has(m.material))groups.set(m.material,[]);groups.get(m.material).push(m);inner.remove(m);}for(const [mat,meshes] of groups){const g=merged(T,meshes);add(T,inner,g,mat);}
 };
 H.wheel=(T,spin,MAT)=>{
  parts(T);if(!shared.tire){shared.tire=new T.LatheGeometry([[.23,-.155],[.31,-.155],[.347,-.128],[.36,-.075],[.36,.075],[.347,.128],[.31,.155],[.23,.155]].map(p=>new T.Vector2(...p)),28);shared.tire.rotateZ(Math.PI/2);shared.rim=new T.CylinderGeometry(.235,.235,.25,24);shared.rim.rotateZ(Math.PI/2);shared.hub=new T.CylinderGeometry(.084,.084,.32,16);shared.hub.rotateZ(Math.PI/2);}
  add(T,spin,shared.tire,shared.rubber);add(T,spin,shared.rim,shared.black);add(T,spin,shared.hub,shared.chrome);
- for(let i=0;i<5;i++){const a=i*Math.PI*2/5;for(const side of [-1,1]){const sp=box(T,spin,.022,.14,.035,shared.chrome,side*.139,.15*Math.cos(a),.15*Math.sin(a));sp.rotation.x=a;}}
+ if(!shared.spokes){const tmp=new T.Group();for(let i=0;i<5;i++){const a=i*Math.PI*2/5;for(const side of [-1,1]){const sp=box(T,tmp,.022,.14,.035,shared.chrome,side*.139,.15*Math.cos(a),.15*Math.sin(a));sp.rotation.x=a;}}shared.spokes=merged(T,tmp.children);}add(T,spin,shared.spokes,shared.chrome);
 };
 let count=0,time=0,el;
 H.stats=(dt,renderer,Q)=>{count++;time+=dt;if(time<1)return;if(!el){el=document.createElement('div');el.style.cssText='position:fixed;bottom:7px;left:50%;transform:translateX(-50%);z-index:20;pointer-events:none;font:11px system-ui;color:#e3ecf5;background:#0b1421bb;padding:5px 10px;border-radius:4px;white-space:nowrap';document.body.appendChild(el);}el.textContent='HYBRID · '+Math.round(count/time)+' FPS · '+renderer.domElement.width+'×'+renderer.domElement.height+' · '+Q.level.toUpperCase()+' · '+renderer.info.render.calls+' calls';count=0;time=0;};
