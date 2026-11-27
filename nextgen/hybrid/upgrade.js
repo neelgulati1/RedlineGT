@@ -18,6 +18,17 @@ H.environment=(T,renderer,scene,mode)=>{
  if(!night){const sun=c.createRadialGradient(740,155,3,740,155,88);sun.addColorStop(0,'rgba(255,249,221,1)');sun.addColorStop(.15,'rgba(255,245,216,.95)');sun.addColorStop(1,'rgba(255,245,216,0)');c.fillStyle=sun;c.fillRect(650,65,180,180);}
  for(let i=0;i<86;i++){const x=i*12,b=6+r()*50,ww=8+r()*9;c.fillStyle=night?'#202b3d':'#7f8990';c.fillRect(x,260-b,ww,b);if(night){c.fillStyle=r()<.6?'#e7bd80':'#94b6d5';for(let y=264-b;y<254;y+=7)if(r()<.65)c.fillRect(x+2,y,3,2);}}
  const tex=new T.CanvasTexture(canvas);tex.encoding=T.sRGBEncoding;tex.mapping=T.EquirectangularReflectionMapping;const pm=new T.PMREMGenerator(renderer),rt=pm.fromEquirectangular(tex);scene.environment=envCache[mode]=rt.texture;pm.dispose();tex.dispose();
+ if(!night){
+   const fallback=rt.texture;
+   new T.TextureLoader().load('./assets/foundry/street-light.jpg',image=>{
+     image.encoding=T.sRGBEncoding;image.mapping=T.EquirectangularReflectionMapping;
+     const filter=new T.PMREMGenerator(renderer);
+     const photo=filter.fromEquirectangular(image).texture;
+     envCache.day=photo;
+     if(scene.environment===fallback)scene.environment=photo;
+     filter.dispose();image.dispose();rt.dispose();
+   });
+ }
  }catch(e){console.warn('Environment lighting unavailable',e);}
 };
 H.roadTexture=(T,renderer,rx,ry,base)=>{

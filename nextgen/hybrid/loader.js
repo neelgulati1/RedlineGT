@@ -45,7 +45,7 @@ function patchLegacy(html,scriptURL){
 }
 const iframe=document.getElementById('game'),status=document.getElementById('status');
 try{
- const response=await fetch(new URL('../index.html',location.href),{cache:'no-cache'});
+ const response=await fetch(new URL('../classic.html',location.href),{cache:'no-cache'});
  if(!response.ok)throw Error('Original game HTTP '+response.status);
  const html=patchLegacy(await response.text(),new URL('./hybrid/upgrade.js',import.meta.url).href);
  iframe.srcdoc=html;iframe.hidden=false;status.hidden=true;

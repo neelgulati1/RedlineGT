@@ -10,7 +10,7 @@ Phase 1 experimental engine foundation. The original root index.html remains unt
 - Zero-cost development; no paid services or assets.
 
 ## Run locally
-Serve this directory with a static HTTP server, then open index.html. The prototype uses native ES modules and WebGL 2. No installation of packages or external network requests is required. The existing game is available at ../index.html.
+Serve this directory with a static HTTP server, then open index.html. The prototype uses native ES modules and WebGL 2. No installation of packages or external network requests is required. The existing game is available at ../classic.html.
 
 ## Scope
 The initial prototype is a technical test surface, not the redesigned world or finished vehicle art. Performance and driving behavior require browser and hardware validation. The rendering and physics modules are deliberately independent so they can be replaced or expanded.
