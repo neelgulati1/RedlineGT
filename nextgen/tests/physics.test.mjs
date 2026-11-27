@@ -1,0 +1,3 @@
+import assert from 'node:assert/strict';import {Vehicle} from '../src/physics.js';import {FixedLoop} from '../src/loop.js';
+const c=new Vehicle();for(let i=0;i<1200;i++)c.step(1/120,{throttle:1});assert.ok(c.u>15&&c.u<70);assert.ok(Math.abs(c.x)<1e-7);for(let i=0;i<1800;i++)c.step(1/120,{brake:1});assert.ok(c.u<.2);
+const d=new Vehicle();for(let i=0;i<1000;i++)d.step(1/120,{throttle:.7,steer:i>400?.35:0},.65);assert.ok(Number.isFinite(d.x)&&Math.abs(d.yaw)>.1);const l=new FixedLoop();let n=0;for(let i=0;i<60;i++)l.advance(1/60,()=>n++);assert.equal(n,120);console.log('Physics smoke tests passed');
